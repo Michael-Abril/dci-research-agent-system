@@ -25,6 +25,7 @@ env/
 # Data (large files)
 data/documents/**/*.pdf
 data/indexes/**/*.json
+*.db
 
 # OS
 .DS_Store
