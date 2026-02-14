@@ -2,7 +2,8 @@
 Base agent class for the DCI Research Agent System.
 
 All domain agents inherit from this base, which handles LLM interaction,
-context formatting, and response generation.
+context formatting, and response generation. Includes fallback response
+generation when LLM APIs are unavailable.
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ class BaseAgent:
 
     Each agent has a system prompt encoding domain expertise and
     generates responses grounded in retrieved document sections.
+    When LLM APIs are unavailable, constructs responses directly
+    from retrieved content with proper citations.
     """
 
     def __init__(
@@ -50,18 +53,9 @@ class BaseAgent:
             Dict with 'content' (response text) and 'sources' (citations used).
         """
         context = self._format_context(retrieved_sections)
-
         user_prompt = self._build_user_prompt(query, context)
 
         logger.info("Agent %s responding to: %s", self.name, query[:80])
-
-        response_text = await self.llm.complete(
-            prompt=user_prompt,
-            system_prompt=self.system_prompt,
-            model=self.model,
-            temperature=0.1,
-            max_tokens=3000,
-        )
 
         sources = [
             {
@@ -73,11 +67,57 @@ class BaseAgent:
             for s in retrieved_sections
         ]
 
+        # Try LLM-based response
+        try:
+            response_text = await self.llm.complete(
+                prompt=user_prompt,
+                system_prompt=self.system_prompt,
+                model=self.model,
+                temperature=0.1,
+                max_tokens=3000,
+            )
+        except Exception as e:
+            logger.warning(
+                "Agent %s LLM call failed, using fallback: %s", self.name, e
+            )
+            response_text = self._build_fallback_response(
+                query, retrieved_sections
+            )
+
         return {
             "agent": self.name,
             "content": response_text,
             "sources": sources,
         }
+
+    def _build_fallback_response(
+        self,
+        query: str,
+        sections: list[RetrievalResult],
+    ) -> str:
+        """Build a response directly from retrieved content when LLM is unavailable."""
+        if not sections:
+            return (
+                f"Based on the {self.name} domain knowledge: "
+                "I was unable to retrieve specific document sections for this query. "
+                "Please ensure API keys are configured for full LLM-powered responses."
+            )
+
+        parts = [f"Based on DCI research documents relevant to your question:\n"]
+
+        for section in sections:
+            parts.append(
+                f"**{section.section_title}** "
+                f"({section.citation}):\n"
+                f"{section.content}\n"
+            )
+
+        parts.append(
+            "\n*Note: This response was assembled from retrieved document "
+            "sections. Configure API keys for synthesized, expert-level responses.*"
+        )
+
+        return "\n".join(parts)
 
     def _format_context(self, sections: list[RetrievalResult]) -> str:
         """Format retrieved sections into a context string for the LLM."""

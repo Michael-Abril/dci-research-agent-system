@@ -9,11 +9,15 @@ from typing import Any
 import streamlit as st
 
 
-def render_sidebar(indexed_documents: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Render the sidebar with domain selector and document list.
+def render_sidebar(
+    indexed_documents: dict[str, Any] | None = None,
+    mode_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Render the sidebar with domain selector, status, and document list.
 
     Args:
         indexed_documents: Dict of indexed document metadata by domain.
+        mode_info: System mode information (API key status, etc.).
 
     Returns:
         Dict with sidebar state (selected_domain, etc.).
@@ -23,6 +27,11 @@ def render_sidebar(indexed_documents: dict[str, Any] | None = None) -> dict[str,
         st.caption("Multi-agent AI system for MIT Digital Currency Initiative research")
 
         st.divider()
+
+        # System status
+        if mode_info:
+            _render_system_status(mode_info)
+            st.divider()
 
         # Domain selector
         st.markdown("### Focus Area")
@@ -105,3 +114,28 @@ def render_sidebar(indexed_documents: dict[str, Any] | None = None) -> dict[str,
     return {
         "selected_domain": selected_domain,
     }
+
+
+def _render_system_status(mode_info: dict[str, Any]) -> None:
+    """Render system status indicators."""
+    mode = mode_info.get("mode", "unknown")
+    num_indexes = mode_info.get("num_indexes", 0)
+
+    if mode == "full":
+        st.success(f"System Ready — {num_indexes} documents indexed")
+    elif mode == "partial":
+        providers = []
+        if mode_info.get("has_openai"):
+            providers.append("OpenAI")
+        if mode_info.get("has_anthropic"):
+            providers.append("Anthropic")
+        st.warning(
+            f"Partial mode ({', '.join(providers)}) — "
+            f"{num_indexes} documents indexed"
+        )
+    elif mode == "local":
+        st.info(
+            f"Local mode (keyword search) — {num_indexes} documents indexed"
+        )
+    else:
+        st.error("System not initialized")

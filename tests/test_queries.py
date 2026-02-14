@@ -1,8 +1,12 @@
 """
-Demo query test suite for the DCI Research Agent.
+Test suite for the DCI Research Agent.
 
-Tests that the query router correctly classifies all demo queries
-and that the full pipeline produces responses with citations.
+Tests cover:
+- Keyword-based routing
+- Local keyword search (no LLM required)
+- Agent creation and response generation
+- Full pipeline integration with mock LLM
+- Content extraction from indexes
 """
 
 from __future__ import annotations
@@ -13,11 +17,11 @@ from src.agents.router import QueryRouter
 from src.agents.domain_agents import DomainAgentFactory
 from src.agents.synthesizer import ResponseSynthesizer
 from src.agents.orchestrator import AgentOrchestrator
-from src.retrieval.pageindex_retriever import PageIndexRetriever
+from src.retrieval.pageindex_retriever import PageIndexRetriever, RetrievalResult
 from src.llm.client import LLMClient
 
 
-# ── Router Tests ─────────────────────────────────────────────────────────────
+# -- Router Tests ---------------------------------------------------------------
 
 
 class TestQueryRouterKeywords:
@@ -91,7 +95,7 @@ class TestQueryRouterKeywords:
         assert result["confidence"] == 0.6
 
 
-# ── Retriever Tests ──────────────────────────────────────────────────────────
+# -- Retriever Tests ------------------------------------------------------------
 
 
 class TestRetrieverLoading:
@@ -131,7 +135,173 @@ class TestRetrieverLoading:
         assert len(retriever.indexes) == 0
 
 
-# ── Agent Factory Tests ──────────────────────────────────────────────────────
+# -- Local Search Tests ---------------------------------------------------------
+
+
+class TestLocalSearch:
+    """Test keyword-based local tree search (no LLM required)."""
+
+    def _make_retriever(self, tmp_indexes, tmp_documents):
+        """Create a retriever with no LLM (local-only mode)."""
+        return PageIndexRetriever(
+            indexes_dir=tmp_indexes,
+            documents_dir=tmp_documents,
+            llm_client=None,
+        )
+
+    def test_has_llm_is_false_without_client(self, tmp_indexes, tmp_documents):
+        retriever = self._make_retriever(tmp_indexes, tmp_documents)
+        assert retriever.has_llm is False
+
+    @pytest.mark.asyncio
+    async def test_local_search_finds_throughput(self, tmp_indexes, tmp_documents):
+        retriever = self._make_retriever(tmp_indexes, tmp_documents)
+        results = await retriever.search(
+            "How does Hamilton achieve high throughput?",
+            domains=["cbdc"],
+        )
+        assert len(results) > 0
+        # Should find the Transaction Processing or Evaluation node
+        titles = [r.section_title for r in results]
+        assert any("Transaction" in t or "Evaluation" in t for t in titles)
+
+    @pytest.mark.asyncio
+    async def test_local_search_returns_content_from_index(self, tmp_indexes, tmp_documents):
+        retriever = self._make_retriever(tmp_indexes, tmp_documents)
+        results = await retriever.search(
+            "parallel processing throughput",
+            domains=["cbdc"],
+        )
+        assert len(results) > 0
+        # Content should come from index, not "(Content not available)"
+        for r in results:
+            assert r.content != "(Content not available)"
+            assert len(r.content) > 20
+
+    @pytest.mark.asyncio
+    async def test_local_search_respects_domain_filter(self, tmp_indexes, tmp_documents):
+        retriever = self._make_retriever(tmp_indexes, tmp_documents)
+        # Search for privacy domain — shouldn't find anything in cbdc-only index
+        results = await retriever.search(
+            "How does Hamilton achieve high throughput?",
+            domains=["privacy"],
+        )
+        assert len(results) == 0
+
+    @pytest.mark.asyncio
+    async def test_local_search_cryptographic_design(self, tmp_indexes, tmp_documents):
+        retriever = self._make_retriever(tmp_indexes, tmp_documents)
+        results = await retriever.search(
+            "cryptographic commitment UHS storage",
+            domains=["cbdc"],
+        )
+        assert len(results) > 0
+        titles = [r.section_title for r in results]
+        assert any("Cryptographic" in t for t in titles)
+
+    @pytest.mark.asyncio
+    async def test_local_search_returns_citations(self, tmp_indexes, tmp_documents):
+        retriever = self._make_retriever(tmp_indexes, tmp_documents)
+        results = await retriever.search("Hamilton CBDC")
+        assert len(results) > 0
+        for r in results:
+            assert r.document_title
+            assert r.start_page > 0
+            assert r.citation  # Citation string is non-empty
+
+    @pytest.mark.asyncio
+    async def test_local_search_no_results_for_unrelated(self, tmp_indexes, tmp_documents):
+        retriever = self._make_retriever(tmp_indexes, tmp_documents)
+        results = await retriever.search("quantum computing neural networks")
+        assert len(results) == 0
+
+    @pytest.mark.asyncio
+    async def test_node_content_cache_populated(self, tmp_indexes, tmp_documents):
+        retriever = self._make_retriever(tmp_indexes, tmp_documents)
+        assert "cbdc/hamilton_nsdi23" in retriever._node_content_cache
+        cache = retriever._node_content_cache["cbdc/hamilton_nsdi23"]
+        assert "2.1" in cache
+        assert "content" in cache["2.1"]
+        assert "two-phase" in cache["2.1"]["content"].lower()
+
+
+# -- Real Index Tests -----------------------------------------------------------
+
+
+class TestRealIndexes:
+    """Test local search against the actual project indexes."""
+
+    @pytest.mark.asyncio
+    async def test_real_indexes_load(self, real_indexes_dir, real_documents_dir):
+        retriever = PageIndexRetriever(
+            indexes_dir=real_indexes_dir,
+            documents_dir=real_documents_dir,
+            llm_client=None,
+        )
+        # Should have loaded 6 indexes (or at least more than 0)
+        assert len(retriever.indexes) >= 1
+
+    @pytest.mark.asyncio
+    async def test_hamilton_query_on_real_indexes(self, real_indexes_dir, real_documents_dir):
+        retriever = PageIndexRetriever(
+            indexes_dir=real_indexes_dir,
+            documents_dir=real_documents_dir,
+            llm_client=None,
+        )
+        results = await retriever.search(
+            "How does Hamilton achieve 1.7 million transactions per second?",
+            domains=["cbdc"],
+        )
+        assert len(results) > 0
+        assert any("Hamilton" in r.document_title for r in results)
+
+    @pytest.mark.asyncio
+    async def test_weak_sentinel_query_on_real_indexes(self, real_indexes_dir, real_documents_dir):
+        retriever = PageIndexRetriever(
+            indexes_dir=real_indexes_dir,
+            documents_dir=real_documents_dir,
+            llm_client=None,
+        )
+        results = await retriever.search(
+            "What is the Weak Sentinel approach to CBDC privacy?",
+            domains=["privacy"],
+        )
+        assert len(results) > 0
+        # Should find Weak Sentinel paper content
+        assert any(
+            "sentinel" in r.section_title.lower() or "sentinel" in r.content.lower()
+            for r in results
+        )
+
+    @pytest.mark.asyncio
+    async def test_stablecoin_query_on_real_indexes(self, real_indexes_dir, real_documents_dir):
+        retriever = PageIndexRetriever(
+            indexes_dir=real_indexes_dir,
+            documents_dir=real_documents_dir,
+            llm_client=None,
+        )
+        results = await retriever.search(
+            "What risks does DCI identify with stablecoins?",
+            domains=["stablecoins"],
+        )
+        assert len(results) > 0
+
+    @pytest.mark.asyncio
+    async def test_utreexo_query_on_real_indexes(self, real_indexes_dir, real_documents_dir):
+        retriever = PageIndexRetriever(
+            indexes_dir=real_indexes_dir,
+            documents_dir=real_documents_dir,
+            llm_client=None,
+        )
+        results = await retriever.search(
+            "How does Utreexo reduce Bitcoin node storage requirements?",
+            domains=["bitcoin"],
+        )
+        assert len(results) > 0
+        assert any("utreexo" in r.document_title.lower() for r in results)
+
+
+# -- Agent Factory Tests --------------------------------------------------------
 
 
 class TestDomainAgentFactory:
@@ -162,7 +332,7 @@ class TestDomainAgentFactory:
         assert "PRIVACY" in agents
 
 
-# ── Integration Tests ────────────────────────────────────────────────────────
+# -- Integration Tests ----------------------------------------------------------
 
 
 class TestAgentResponse:
@@ -182,6 +352,31 @@ class TestAgentResponse:
         assert "sources" in result
         assert len(result["sources"]) > 0
         assert result["agent"] == "CBDC"
+
+    @pytest.mark.asyncio
+    async def test_agent_fallback_response_without_llm(
+        self, sample_retrieval_results
+    ):
+        """Test that agent generates a response even without LLM."""
+        # Create a client that always fails
+        client = LLMClient.__new__(LLMClient)
+        client._openai = None
+        client._anthropic = None
+
+        async def failing_complete(**kwargs):
+            raise RuntimeError("No LLM available")
+        client.complete = failing_complete
+        client._is_anthropic = lambda m: m.startswith("claude")
+
+        factory = DomainAgentFactory(llm_client=client)
+        agent = factory.get_agent("CBDC")
+        result = await agent.respond(
+            "How does Hamilton achieve high throughput?",
+            sample_retrieval_results,
+        )
+        assert "content" in result
+        assert len(result["content"]) > 50
+        assert "Transaction Processing" in result["content"]
 
 
 class TestSynthesizer:
@@ -217,7 +412,90 @@ class TestSynthesizer:
         assert "unable" in result["content"].lower() or "wasn't" in result["content"].lower()
 
 
-# ── Utility Tests ────────────────────────────────────────────────────────────
+# -- Full Pipeline Integration --------------------------------------------------
+
+
+class TestFullPipeline:
+    """Test the full orchestrator pipeline with local search."""
+
+    @pytest.mark.asyncio
+    async def test_pipeline_with_mock_llm(
+        self, tmp_indexes, tmp_documents, mock_llm_client
+    ):
+        """Full pipeline using mock LLM for routing/agents, local for search."""
+        retriever = PageIndexRetriever(
+            indexes_dir=tmp_indexes,
+            documents_dir=tmp_documents,
+            llm_client=mock_llm_client,
+        )
+        router = QueryRouter(llm_client=mock_llm_client)
+        factory = DomainAgentFactory(llm_client=mock_llm_client)
+        synthesizer = ResponseSynthesizer(llm_client=mock_llm_client)
+
+        orchestrator = AgentOrchestrator(
+            retriever=retriever,
+            router=router,
+            agent_factory=factory,
+            synthesizer=synthesizer,
+        )
+
+        result = await orchestrator.process_query(
+            "How does Hamilton achieve high throughput?"
+        )
+
+        assert "response" in result
+        assert "sources" in result
+        assert "routing" in result
+        assert "agents_used" in result
+        assert len(result["response"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_pipeline_local_only(
+        self, tmp_indexes, tmp_documents
+    ):
+        """Full pipeline with NO LLM — everything uses fallbacks."""
+        # Create a client that always fails
+        client = LLMClient.__new__(LLMClient)
+        client._openai = None
+        client._anthropic = None
+
+        async def failing_complete(**kwargs):
+            raise RuntimeError("No LLM available")
+
+        async def failing_complete_json(**kwargs):
+            raise RuntimeError("No LLM available")
+
+        client.complete = failing_complete
+        client.complete_json = failing_complete_json
+        client._is_anthropic = lambda m: m.startswith("claude")
+
+        retriever = PageIndexRetriever(
+            indexes_dir=tmp_indexes,
+            documents_dir=tmp_documents,
+            llm_client=client,
+        )
+        router = QueryRouter(llm_client=client)
+        factory = DomainAgentFactory(llm_client=client)
+        synthesizer = ResponseSynthesizer(llm_client=client)
+
+        orchestrator = AgentOrchestrator(
+            retriever=retriever,
+            router=router,
+            agent_factory=factory,
+            synthesizer=synthesizer,
+        )
+
+        result = await orchestrator.process_query(
+            "How does Hamilton achieve high throughput?"
+        )
+
+        # Should still produce a result using keyword routing + local search + fallback agent
+        assert "response" in result
+        assert len(result["response"]) > 0
+        assert "agents_used" in result
+
+
+# -- Utility Tests --------------------------------------------------------------
 
 
 class TestHelpers:

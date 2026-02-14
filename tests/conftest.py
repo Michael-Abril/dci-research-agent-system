@@ -19,7 +19,7 @@ from src.agents.synthesizer import ResponseSynthesizer
 from src.agents.orchestrator import AgentOrchestrator
 
 
-# ── Sample Tree Index ────────────────────────────────────────────────────────
+# -- Sample Tree Index ----------------------------------------------------------
 
 SAMPLE_TREE = {
     "title": "Hamilton: A High-Performance Transaction Processor for CBDCs",
@@ -29,6 +29,7 @@ SAMPLE_TREE = {
             "node_id": "1",
             "title": "Introduction",
             "summary": "Introduces the motivation for high-performance CBDC transaction processing and the challenges involved.",
+            "content": "Central banks around the world are exploring digital currencies. A CBDC needs to process hundreds of thousands of transactions per second with sub-second finality while tolerating datacenter-level failures. Project Hamilton explores whether these requirements can be met.",
             "start_page": 1,
             "end_page": 2,
             "nodes": [],
@@ -37,6 +38,7 @@ SAMPLE_TREE = {
             "node_id": "2",
             "title": "System Design",
             "summary": "Describes Hamilton's architecture including parallel processing, UTXO model, and cryptographic commitments for high throughput.",
+            "content": "Hamilton implements two distinct architectures for CBDC transaction processing, both built on the UTXO-based Unspent Hash Set (UHS) data structure.",
             "start_page": 3,
             "end_page": 7,
             "nodes": [
@@ -44,6 +46,7 @@ SAMPLE_TREE = {
                     "node_id": "2.1",
                     "title": "Transaction Processing",
                     "summary": "Details the parallel transaction processing pipeline and conflict detection mechanism that enables 1.7M TPS.",
+                    "content": "The two-phase commit architecture eliminates the single ordering server bottleneck. In Phase 1, sentinels validate transactions. In Phase 2, coordinators dispatch validated transactions to executor shards which apply state updates in parallel. A novel UTXO-based conflict detection scheme enables non-conflicting transactions to process concurrently, achieving 1.7 million transactions per second.",
                     "start_page": 3,
                     "end_page": 5,
                     "nodes": [],
@@ -52,6 +55,7 @@ SAMPLE_TREE = {
                     "node_id": "2.2",
                     "title": "Cryptographic Design",
                     "summary": "Describes the cryptographic commitment scheme used to reduce storage while maintaining verifiability.",
+                    "content": "Hamilton stores funds as opaque 32-byte SHA-256 hashes in an Unspent Hash Set (UHS). Each commitment h := H(v, P, sn) hides the value, payee, and serial number. The processor never sees balances or addresses, reducing storage to 32 bytes per UTXO.",
                     "start_page": 6,
                     "end_page": 7,
                     "nodes": [],
@@ -62,6 +66,7 @@ SAMPLE_TREE = {
             "node_id": "3",
             "title": "Evaluation",
             "summary": "Performance evaluation showing Hamilton achieves over 1.7 million transactions per second on commodity hardware.",
+            "content": "Performance evaluation on commodity hardware. Two-phase commit: 1.7 million TPS, sub-second 99th-percentile latency. Atomizer: 170,000 TPS. Fault tolerance: survives loss of two datacenter locations with zero data loss.",
             "start_page": 8,
             "end_page": 10,
             "nodes": [],
@@ -75,7 +80,7 @@ SAMPLE_TREE = {
 }
 
 
-# ── Fixtures ─────────────────────────────────────────────────────────────────
+# -- Fixtures -------------------------------------------------------------------
 
 @pytest.fixture
 def sample_tree() -> dict[str, Any]:
@@ -167,3 +172,15 @@ def sample_retrieval_results() -> list[RetrievalResult]:
             node_id="2.1",
         ),
     ]
+
+
+@pytest.fixture
+def real_indexes_dir() -> Path:
+    """Return the path to the actual project indexes directory."""
+    return Path(__file__).parent.parent / "data" / "indexes"
+
+
+@pytest.fixture
+def real_documents_dir() -> Path:
+    """Return the path to the actual project documents directory."""
+    return Path(__file__).parent.parent / "data" / "documents"

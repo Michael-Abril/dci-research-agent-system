@@ -3,6 +3,7 @@ Response synthesizer for the DCI Research Agent.
 
 Combines outputs from multiple domain agents into a coherent, well-cited
 response. Handles single-agent and multi-agent responses.
+When LLM is unavailable, falls back to direct formatting of agent outputs.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ class ResponseSynthesizer:
 
     For single-agent responses, formats and adds citations.
     For multi-agent responses, combines and resolves into a coherent whole.
+    Falls back to direct formatting when LLM is unavailable.
     """
 
     def __init__(self, llm_client: LLMClient, model: str = "claude-sonnet-4-20250514"):
@@ -125,13 +127,19 @@ Create a unified response that:
 3. Uses [Paper Title, Page X] citation format
 4. Includes a Sources section at the end"""
 
-        synthesized = await self.llm.complete(
-            prompt=prompt,
-            system_prompt=RESPONSE_SYNTHESIZER_PROMPT,
-            model=self.model,
-            temperature=0.1,
-            max_tokens=4000,
-        )
+        try:
+            synthesized = await self.llm.complete(
+                prompt=prompt,
+                system_prompt=RESPONSE_SYNTHESIZER_PROMPT,
+                model=self.model,
+                temperature=0.1,
+                max_tokens=4000,
+            )
+        except Exception as e:
+            logger.warning("Multi-agent synthesis failed, using fallback: %s", e)
+            synthesized = self._fallback_multi_synthesis(
+                query, agent_responses
+            )
 
         # Deduplicate sources
         seen = set()
@@ -143,6 +151,21 @@ Create a unified response that:
                 unique_sources.append(s)
 
         return {"content": synthesized, "sources": unique_sources}
+
+    def _fallback_multi_synthesis(
+        self,
+        query: str,
+        agent_responses: list[dict[str, Any]],
+    ) -> str:
+        """Combine multiple agent responses without LLM."""
+        parts = []
+        for resp in agent_responses:
+            agent_name = resp.get("agent", "Unknown")
+            content = resp.get("content", "")
+            if content:
+                parts.append(f"### {agent_name} Perspective\n\n{content}")
+
+        return "\n\n".join(parts)
 
     def _collect_sources(
         self,
