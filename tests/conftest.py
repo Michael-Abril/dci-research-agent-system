@@ -117,6 +117,7 @@ def mock_llm_client() -> LLMClient:
     client = LLMClient.__new__(LLMClient)
     client._openai = None
     client._anthropic = None
+    client._usage_log = []
 
     async def mock_complete(prompt="", system_prompt="", model="", **kwargs):
         # Return different responses based on what's being asked

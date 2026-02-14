@@ -66,6 +66,7 @@ class PathConfig:
     data_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data")
     documents_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "documents")
     indexes_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "indexes")
+    database_path: Path = field(default_factory=lambda: PROJECT_ROOT / "data" / "dci_research.db")
 
 
 # Domain categories used throughout the system

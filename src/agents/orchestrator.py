@@ -2,11 +2,13 @@
 Agent orchestrator for the DCI Research Agent System.
 
 Coordinates the full query pipeline: routing → retrieval → agent execution → synthesis.
-This is the main entry point for processing user queries.
+This is the main entry point for processing user queries. Supports multi-turn
+conversations by threading conversation history through all pipeline stages.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from src.agents.domain_agents import DomainAgentFactory
@@ -26,6 +28,8 @@ class AgentOrchestrator:
     2. PageIndex Retriever searches relevant document indexes
     3. Domain Agent(s) generate expert responses with context
     4. Response Synthesizer combines outputs with proper citations
+
+    Supports multi-turn conversations and response caching.
     """
 
     def __init__(
@@ -34,17 +38,25 @@ class AgentOrchestrator:
         router: QueryRouter,
         agent_factory: DomainAgentFactory,
         synthesizer: ResponseSynthesizer,
+        database: "DatabaseManager | None" = None,
     ):
         self.retriever = retriever
         self.router = router
         self.agent_factory = agent_factory
         self.synthesizer = synthesizer
+        self.database = database
 
-    async def process_query(self, query: str) -> dict[str, Any]:
+    async def process_query(
+        self,
+        query: str,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
         """Process a user query through the full pipeline.
 
         Args:
             query: The user's research question.
+            conversation_history: Optional list of prior turns for multi-turn context.
+                Each dict has 'role' and 'content' keys.
 
         Returns:
             Dict with:
@@ -54,10 +66,17 @@ class AgentOrchestrator:
                 - agents_used: List of agent names that contributed
         """
         logger.info("Processing query: %s", query[:100])
+        recent_history = (conversation_history or [])[-5:]
+
+        # Check response cache if database available
+        cache_hit = await self._check_cache(query)
+        if cache_hit is not None:
+            logger.info("Cache hit for query: %s", query[:60])
+            return cache_hit
 
         # Step 1: Route the query
         try:
-            routing = await self.router.route(query)
+            routing = await self.router.route(query, conversation_history=recent_history)
         except Exception as e:
             logger.error("Routing failed: %s", e)
             routing = {
@@ -114,7 +133,9 @@ class AgentOrchestrator:
         # Primary agent
         try:
             primary_agent = self.agent_factory.get_agent(routing["primary_agent"])
-            primary_response = await primary_agent.respond(query, unique_sections)
+            primary_response = await primary_agent.respond(
+                query, unique_sections, conversation_history=recent_history
+            )
             agent_responses.append(primary_response)
             agents_used.append(routing["primary_agent"])
         except Exception as e:
@@ -124,7 +145,9 @@ class AgentOrchestrator:
         for agent_name in routing.get("secondary_agents", [])[:1]:
             try:
                 agent = self.agent_factory.get_agent(agent_name)
-                response = await agent.respond(query, unique_sections)
+                response = await agent.respond(
+                    query, unique_sections, conversation_history=recent_history
+                )
                 agent_responses.append(response)
                 agents_used.append(agent_name)
             except Exception as e:
@@ -136,6 +159,7 @@ class AgentOrchestrator:
                 query=query,
                 agent_responses=agent_responses,
                 sections=unique_sections,
+                conversation_history=recent_history,
             )
         except Exception as e:
             logger.error("Synthesis failed: %s", e)
@@ -151,9 +175,50 @@ class AgentOrchestrator:
                     "sources": [],
                 }
 
-        return {
+        result = {
             "response": final["content"],
             "sources": final["sources"],
             "routing": routing,
             "agents_used": agents_used,
         }
+
+        # Cache the response
+        await self._store_cache(query, routing, result)
+
+        return result
+
+    async def _check_cache(self, query: str) -> dict[str, Any] | None:
+        """Check the response cache for a matching query."""
+        if not self.database:
+            return None
+        try:
+            from src.persistence.database import DatabaseManager
+            cache_key = DatabaseManager.compute_cache_key(query)
+            cached = await self.database.get_cached_response(cache_key)
+            if cached:
+                return json.loads(cached.response_json)
+        except Exception as e:
+            logger.debug("Cache lookup failed: %s", e)
+        return None
+
+    async def _store_cache(
+        self, query: str, routing: dict[str, Any], result: dict[str, Any]
+    ) -> None:
+        """Store a response in the cache."""
+        if not self.database:
+            return
+        try:
+            from src.persistence.database import DatabaseManager
+            routing_key = routing.get("primary_agent", "") + "|" + ",".join(
+                routing.get("domains_to_search", [])
+            )
+            cache_key = DatabaseManager.compute_cache_key(query, routing_key)
+            await self.database.cache_response(
+                query_hash=cache_key,
+                query=query,
+                routing_key=routing_key,
+                response_json=json.dumps(result),
+                ttl_hours=24,
+            )
+        except Exception as e:
+            logger.debug("Cache store failed: %s", e)

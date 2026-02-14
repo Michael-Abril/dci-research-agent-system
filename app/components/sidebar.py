@@ -1,5 +1,8 @@
 """
 Sidebar component for the DCI Research Agent Streamlit app.
+
+Includes system status, domain selector, conversation history,
+document index browser, and example queries.
 """
 
 from __future__ import annotations
@@ -12,16 +15,24 @@ import streamlit as st
 def render_sidebar(
     indexed_documents: dict[str, Any] | None = None,
     mode_info: dict[str, Any] | None = None,
+    conversations: list | None = None,
 ) -> dict[str, Any]:
-    """Render the sidebar with domain selector, status, and document list.
+    """Render the sidebar with domain selector, status, conversations, and docs.
 
     Args:
         indexed_documents: Dict of indexed document metadata by domain.
         mode_info: System mode information (API key status, etc.).
+        conversations: List of Conversation objects from database.
 
     Returns:
-        Dict with sidebar state (selected_domain, etc.).
+        Dict with sidebar state (selected_domain, conversation actions, etc.).
     """
+    state: dict[str, Any] = {
+        "selected_domain": None,
+        "selected_conversation_id": None,
+        "new_conversation": False,
+    }
+
     with st.sidebar:
         st.markdown("# DCI Research Agent")
         st.caption("Multi-agent AI system for MIT Digital Currency Initiative research")
@@ -32,6 +43,26 @@ def render_sidebar(
         if mode_info:
             _render_system_status(mode_info)
             st.divider()
+
+        # Conversation management
+        st.markdown("### Conversations")
+
+        if st.button("New Conversation", use_container_width=True):
+            state["new_conversation"] = True
+
+        if conversations:
+            for conv in conversations[:10]:
+                title = conv.title or "Untitled"
+                if len(title) > 40:
+                    title = title[:40] + "..."
+                if st.button(
+                    title,
+                    key=f"conv_{conv.id}",
+                    use_container_width=True,
+                ):
+                    state["selected_conversation_id"] = conv.id
+
+        st.divider()
 
         # Domain selector
         st.markdown("### Focus Area")
@@ -59,7 +90,7 @@ def render_sidebar(
             "Bitcoin & Utreexo": "bitcoin",
             "Payment Tokens": "payment_tokens",
         }
-        selected_domain = domain_map.get(selected)
+        state["selected_domain"] = domain_map.get(selected)
 
         st.divider()
 
@@ -111,9 +142,7 @@ def render_sidebar(
             unsafe_allow_html=True,
         )
 
-    return {
-        "selected_domain": selected_domain,
-    }
+    return state
 
 
 def _render_system_status(mode_info: dict[str, Any]) -> None:

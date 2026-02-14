@@ -3,7 +3,7 @@ Base agent class for the DCI Research Agent System.
 
 All domain agents inherit from this base, which handles LLM interaction,
 context formatting, and response generation. Includes fallback response
-generation when LLM APIs are unavailable.
+generation when LLM APIs are unavailable. Supports multi-turn conversations.
 """
 
 from __future__ import annotations
@@ -24,6 +24,8 @@ class BaseAgent:
     generates responses grounded in retrieved document sections.
     When LLM APIs are unavailable, constructs responses directly
     from retrieved content with proper citations.
+
+    Supports conversation history for multi-turn interactions.
     """
 
     def __init__(
@@ -42,18 +44,20 @@ class BaseAgent:
         self,
         query: str,
         retrieved_sections: list[RetrievalResult],
+        conversation_history: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
         """Generate a domain-expert response to a query.
 
         Args:
             query: The user's question.
             retrieved_sections: Relevant document sections from retrieval.
+            conversation_history: Recent conversation turns for context.
 
         Returns:
             Dict with 'content' (response text) and 'sources' (citations used).
         """
         context = self._format_context(retrieved_sections)
-        user_prompt = self._build_user_prompt(query, context)
+        user_prompt = self._build_user_prompt(query, context, conversation_history)
 
         logger.info("Agent %s responding to: %s", self.name, query[:80])
 
@@ -135,9 +139,28 @@ class BaseAgent:
             )
         return "\n".join(parts)
 
-    def _build_user_prompt(self, query: str, context: str) -> str:
-        """Build the full user prompt with query and context."""
-        return f"""Answer the following research question using the retrieved document sections below. Ground your response in the specific content provided and cite sources using [Document Title, Page X] format.
+    def _build_user_prompt(
+        self,
+        query: str,
+        context: str,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> str:
+        """Build the full user prompt with query, context, and conversation history."""
+        parts = []
+
+        # Include conversation history for multi-turn context
+        if conversation_history:
+            parts.append("## Prior Conversation Context\n")
+            for turn in conversation_history[-3:]:
+                role = turn["role"].capitalize()
+                content = turn["content"]
+                # Truncate long prior messages
+                if len(content) > 300:
+                    content = content[:300] + "..."
+                parts.append(f"**{role}:** {content}\n")
+            parts.append("")
+
+        parts.append(f"""Answer the following research question using the retrieved document sections below. Ground your response in the specific content provided and cite sources using [Document Title, Page X] format.
 
 If the retrieved sections don't fully address the question, supplement with your domain knowledge but clearly indicate which parts come from retrieved documents vs. general knowledge.
 
@@ -154,4 +177,6 @@ If the retrieved sections don't fully address the question, supplement with your
 - Cite specific pages from the retrieved documents
 - Use [Document Title, Page X] citation format
 - Explain technical concepts clearly
-- Acknowledge if information is incomplete"""
+- Acknowledge if information is incomplete""")
+
+        return "\n".join(parts)

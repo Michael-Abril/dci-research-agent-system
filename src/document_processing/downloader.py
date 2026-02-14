@@ -2,6 +2,7 @@
 Document acquisition for DCI Research Agent.
 
 Downloads PDFs from known URLs and organizes them into domain categories.
+Reads the document registry from config/constants.py.
 """
 
 from __future__ import annotations
@@ -12,26 +13,33 @@ from typing import Any
 
 import httpx
 
+from config.constants import DCI_DOCUMENT_SOURCES
 from src.utils.logging import setup_logging
 
 logger = setup_logging("document_processing.downloader")
 
-# Known DCI publication URLs
-# These are publicly available research papers
-DOCUMENT_REGISTRY: dict[str, list[dict[str, str]]] = {
-    "cbdc": [
-        {
-            "id": "hamilton_nsdi23",
-            "title": "Hamilton: A High-Performance Transaction Processor for CBDCs",
-            "url": "https://www.usenix.org/system/files/nsdi23-lovejoy.pdf",
-            "filename": "hamilton_nsdi23.pdf",
-        },
-    ],
-    "privacy": [],
-    "stablecoins": [],
-    "payment_tokens": [],
-    "bitcoin": [],
-}
+
+def _build_registry() -> dict[str, list[dict[str, str]]]:
+    """Build a flat download registry from the DCI_DOCUMENT_SOURCES constant."""
+    registry: dict[str, list[dict[str, str]]] = {}
+    for domain, papers in DCI_DOCUMENT_SOURCES.items():
+        entries = []
+        for doc_id, info in papers.items():
+            url = info.get("url", "")
+            if not url:
+                continue
+            entries.append({
+                "id": doc_id,
+                "title": info.get("title", doc_id),
+                "url": url,
+                "filename": info.get("filename", f"{doc_id}.pdf"),
+            })
+        registry[domain] = entries
+    return registry
+
+
+# Build once at module load
+DOCUMENT_REGISTRY = _build_registry()
 
 
 class DocumentDownloader:
@@ -47,7 +55,7 @@ class DocumentDownloader:
 
     def _ensure_directories(self) -> None:
         """Create domain subdirectories if they don't exist."""
-        for domain in DOCUMENT_REGISTRY:
+        for domain in DCI_DOCUMENT_SOURCES:
             (self.documents_dir / domain).mkdir(parents=True, exist_ok=True)
 
     async def download_all(self) -> dict[str, list[dict[str, Any]]]:

@@ -1,5 +1,8 @@
 """
 Chat interface component for the DCI Research Agent Streamlit app.
+
+Manages chat state in Streamlit session and renders message history.
+Messages are also persisted to the database for multi-turn conversations.
 """
 
 from __future__ import annotations
@@ -15,6 +18,8 @@ def init_chat_state() -> None:
         st.session_state.messages = []
     if "pending_query" not in st.session_state:
         st.session_state.pending_query = None
+    if "conversation_id" not in st.session_state:
+        st.session_state.conversation_id = None
 
 
 def render_chat_history() -> None:

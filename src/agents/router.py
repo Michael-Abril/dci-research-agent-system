@@ -3,6 +3,7 @@ Query router for the DCI Research Agent.
 
 Analyzes incoming queries and determines which domain agent(s) should handle
 them, what document domains to search, and generates optimized search queries.
+Supports multi-turn conversations for coreference resolution.
 """
 
 from __future__ import annotations
@@ -30,25 +31,31 @@ class QueryRouter:
     """Routes user queries to appropriate domain agent(s).
 
     Uses an LLM to analyze queries and determine routing, with a
-    keyword-based fallback for reliability.
+    keyword-based fallback for reliability. Supports conversation
+    context for coreference resolution in follow-up questions.
     """
 
     def __init__(self, llm_client: LLMClient, model: str = "gpt-4o-mini"):
         self.llm = llm_client
         self.model = model
 
-    async def route(self, query: str) -> dict[str, Any]:
+    async def route(
+        self,
+        query: str,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
         """Analyze a query and determine routing.
 
         Args:
             query: The user's question.
+            conversation_history: Recent conversation turns for context.
 
         Returns:
             Routing decision with primary/secondary agents, search queries,
             and domains to search.
         """
         try:
-            result = await self._llm_route(query)
+            result = await self._llm_route(query, conversation_history)
             # Validate the result
             if self._validate_routing(result):
                 logger.info(
@@ -62,12 +69,30 @@ class QueryRouter:
             logger.warning("LLM routing failed: %s. Using keyword fallback.", e)
 
         # Fallback to keyword routing
-        return self._keyword_route(query)
+        return self._keyword_route(query, conversation_history)
 
-    async def _llm_route(self, query: str) -> dict[str, Any]:
+    async def _llm_route(
+        self,
+        query: str,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
         """Use LLM to analyze and route the query."""
+        prompt_parts = []
+
+        # Include conversation context for coreference resolution
+        if conversation_history:
+            prompt_parts.append("Recent conversation context:")
+            for turn in conversation_history[-3:]:
+                role = turn["role"].capitalize()
+                content = turn["content"][:200]
+                prompt_parts.append(f"  {role}: {content}")
+            prompt_parts.append("")
+
+        prompt_parts.append(f"Route this query:\n\n{query}")
+        full_prompt = "\n".join(prompt_parts)
+
         result = await self.llm.complete_json(
-            prompt=f"Route this query:\n\n{query}",
+            prompt=full_prompt,
             system_prompt=QUERY_ROUTER_PROMPT,
             model=self.model,
             temperature=0.0,
@@ -84,14 +109,33 @@ class QueryRouter:
             return False
         return True
 
-    def _keyword_route(self, query: str) -> dict[str, Any]:
-        """Fallback keyword-based routing."""
+    def _keyword_route(
+        self,
+        query: str,
+        conversation_history: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        """Fallback keyword-based routing.
+
+        Also checks conversation history for domain context when the
+        current query alone doesn't match well (e.g. follow-up questions).
+        """
         query_lower = query.lower()
+
+        # Also include recent assistant messages for context
+        context_text = query_lower
+        if conversation_history:
+            for turn in conversation_history[-3:]:
+                context_text += " " + turn.get("content", "").lower()
+
         scores: dict[str, int] = {agent: 0 for agent in ALL_AGENTS}
 
         for agent, keywords in _KEYWORD_ROUTING.items():
             for kw in keywords:
+                # Primary query matches weighted higher
                 if kw in query_lower:
+                    scores[agent] += 2
+                # Context matches weighted lower
+                elif kw in context_text:
                     scores[agent] += 1
 
         # Sort by score
