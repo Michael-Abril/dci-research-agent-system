@@ -1,0 +1,85 @@
+/* DCI Research Agent — Custom Styles */
+
+/* Main header */
+.main-header {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #1a1a2e;
+    border-bottom: 3px solid #a31f34; /* MIT crimson */
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+/* Sidebar styling */
+section[data-testid="stSidebar"] {
+    background-color: #f8f9fa;
+    border-right: 1px solid #e0e0e0;
+}
+
+section[data-testid="stSidebar"] .stMarkdown h1 {
+    color: #a31f34;
+    font-size: 1.3rem;
+}
+
+/* Source/citation cards */
+.source-card {
+    background-color: #f0f4f8;
+    border-left: 4px solid #a31f34;
+    padding: 0.75rem 1rem;
+    margin: 0.5rem 0;
+    border-radius: 0 4px 4px 0;
+    font-size: 0.9rem;
+}
+
+.source-card .source-title {
+    font-weight: 600;
+    color: #1a1a2e;
+}
+
+.source-card .source-pages {
+    color: #666;
+    font-size: 0.85rem;
+}
+
+/* Chat messages */
+.stChatMessage {
+    border-radius: 8px;
+}
+
+/* Agent badge */
+.agent-badge {
+    display: inline-block;
+    background-color: #e8eef4;
+    color: #2c5282;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 0.5rem;
+}
+
+/* Loading indicator */
+.processing-indicator {
+    color: #666;
+    font-style: italic;
+}
+
+/* Domain selector */
+.domain-pill {
+    display: inline-block;
+    padding: 4px 12px;
+    margin: 2px;
+    border-radius: 16px;
+    font-size: 0.8rem;
+    background-color: #e8eef4;
+    color: #2c5282;
+}
+
+/* Footer */
+.footer-text {
+    color: #999;
+    font-size: 0.75rem;
+    text-align: center;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+}

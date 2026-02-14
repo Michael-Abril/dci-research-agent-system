@@ -1,0 +1,29 @@
+# DCI Research Agent System - Dependencies
+
+# LLM Clients
+openai>=1.0.0
+anthropic>=0.39.0
+
+# PDF Processing
+PyMuPDF>=1.24.0
+tiktoken>=0.5.0
+
+# Web Framework
+streamlit>=1.38.0
+
+# HTTP / Downloads
+httpx>=0.27.0
+requests>=2.31.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# Data handling
+pydantic>=2.0.0
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+
+# Utilities
+tenacity>=8.2.0
