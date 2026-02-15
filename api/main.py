@@ -10,6 +10,7 @@ Usage:
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -37,10 +38,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS for local Streamlit / dev frontends
+# CORS — configurable via CORS_ORIGINS env var (comma-separated)
+# Defaults to "*" for local development
+cors_origins = os.getenv("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

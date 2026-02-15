@@ -3,6 +3,7 @@ Document acquisition for DCI Research Agent.
 
 Downloads PDFs from known URLs and organizes them into domain categories.
 Reads the document registry from config/constants.py.
+Includes retry with exponential backoff, User-Agent headers, and content validation.
 """
 
 from __future__ import annotations
@@ -17,6 +18,13 @@ from config.constants import DCI_DOCUMENT_SOURCES
 from src.utils.logging import setup_logging
 
 logger = setup_logging("document_processing.downloader")
+
+# Academic-friendly User-Agent
+USER_AGENT = "DCI-Research-Agent/1.0 (MIT Digital Currency Initiative; academic research)"
+
+# Retry configuration
+MAX_RETRIES = 3
+RETRY_BACKOFF_BASE = 2  # seconds
 
 
 def _build_registry() -> dict[str, list[dict[str, str]]]:
@@ -47,6 +55,7 @@ class DocumentDownloader:
 
     Manages a local document store organized by domain category.
     Supports incremental downloads (skips already-downloaded files).
+    Includes retry with exponential backoff and content validation.
     """
 
     def __init__(self, documents_dir: Path):
@@ -84,7 +93,7 @@ class DocumentDownloader:
         filename: str,
         doc_id: str = "",
     ) -> dict[str, Any]:
-        """Download a single document.
+        """Download a single document with retry and validation.
 
         Args:
             url: URL to download from.
@@ -108,42 +117,79 @@ class DocumentDownloader:
             }
 
         logger.info("Downloading: %s -> %s", url, dest)
-        try:
-            async with httpx.AsyncClient(
-                follow_redirects=True, timeout=60.0
-            ) as client:
-                response = await client.get(url)
-                response.raise_for_status()
 
-                dest.write_bytes(response.content)
-                file_hash = hashlib.sha256(response.content).hexdigest()[:12]
+        last_error = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                async with httpx.AsyncClient(
+                    follow_redirects=True,
+                    timeout=60.0,
+                    headers={"User-Agent": USER_AGENT},
+                ) as client:
+                    response = await client.get(url)
+                    response.raise_for_status()
 
-                logger.info(
-                    "Downloaded: %s (%d bytes, hash=%s)",
-                    filename,
-                    len(response.content),
-                    file_hash,
-                )
-                return {
-                    "id": doc_id,
-                    "filename": filename,
-                    "path": str(dest),
-                    "status": "downloaded",
-                    "size": len(response.content),
-                    "hash": file_hash,
-                    "domain": domain,
-                }
+                    # Content-type validation: reject HTML error pages
+                    content_type = response.headers.get("content-type", "")
+                    if "text/html" in content_type and filename.endswith(".pdf"):
+                        logger.warning(
+                            "Got HTML instead of PDF for %s (content-type: %s)",
+                            filename,
+                            content_type,
+                        )
+                        return {
+                            "id": doc_id,
+                            "filename": filename,
+                            "path": str(dest),
+                            "status": "failed",
+                            "error": f"Expected PDF but got HTML (content-type: {content_type})",
+                            "domain": domain,
+                        }
 
-        except httpx.HTTPError as e:
-            logger.error("Failed to download %s: %s", url, e)
-            return {
-                "id": doc_id,
-                "filename": filename,
-                "path": str(dest),
-                "status": "failed",
-                "error": str(e),
-                "domain": domain,
-            }
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(response.content)
+                    file_hash = hashlib.sha256(response.content).hexdigest()[:12]
+
+                    logger.info(
+                        "Downloaded: %s (%d bytes, hash=%s)",
+                        filename,
+                        len(response.content),
+                        file_hash,
+                    )
+                    return {
+                        "id": doc_id,
+                        "filename": filename,
+                        "path": str(dest),
+                        "status": "downloaded",
+                        "size": len(response.content),
+                        "hash": file_hash,
+                        "domain": domain,
+                    }
+
+            except httpx.HTTPError as e:
+                last_error = e
+                if attempt < MAX_RETRIES - 1:
+                    import asyncio
+                    wait_time = RETRY_BACKOFF_BASE ** (attempt + 1)
+                    logger.warning(
+                        "Download attempt %d/%d failed for %s: %s. Retrying in %ds...",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        filename,
+                        e,
+                        wait_time,
+                    )
+                    await asyncio.sleep(wait_time)
+
+        logger.error("Failed to download %s after %d attempts: %s", url, MAX_RETRIES, last_error)
+        return {
+            "id": doc_id,
+            "filename": filename,
+            "path": str(dest),
+            "status": "failed",
+            "error": str(last_error),
+            "domain": domain,
+        }
 
     def list_documents(self) -> dict[str, list[Path]]:
         """List all downloaded documents by domain."""

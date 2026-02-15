@@ -1,0 +1,59 @@
+{
+  "title": "PArSEC: A State Channel for Confidential Smart Contract Execution on CBDC Ledgers",
+  "description": "PArSEC (Privacy-preserving Architecture for Smart Contract Execution on CBDCs) is a system developed by MIT DCI that enables confidential smart contract execution on CBDC ledgers through state channels. It allows two or more parties to execute programmable logic off-chain while maintaining the security guarantees of the underlying CBDC system. PArSEC uses zero-knowledge proofs to ensure that off-chain computations are valid without revealing the details of the transactions or contract state to the ledger. The design is compatible with the OpenCBDC transaction processor (Hamilton) and demonstrates how CBDCs can support programmable money while preserving privacy. Key innovations include a novel state channel construction for UTXO-based systems, integration with zero-knowledge proof systems for validity verification, and a mechanism for dispute resolution that does not reveal private transaction details.",
+  "nodes": [
+    {
+      "node_id": "1",
+      "title": "Motivation: Programmability in CBDC Systems",
+      "summary": "Explains why CBDCs need smart contract capabilities beyond simple value transfer. Traditional payment systems support only basic send/receive operations, but modern financial infrastructure requires programmable logic for escrow, automated compliance, conditional payments, and DvP (delivery-versus-payment). However, adding Ethereum-style smart contracts directly to a CBDC ledger would compromise both privacy (all contract state is public) and performance (every node must execute every contract). PArSEC addresses this by moving smart contract execution off-chain into state channels while preserving the CBDC ledger's role as the ultimate source of truth for settlement.",
+      "start_page": 1,
+      "end_page": 3,
+      "content": "Central Bank Digital Currencies need programmability to support modern financial operations: escrow, automated compliance checks, conditional payments, delivery-versus-payment (DvP), and cross-border settlement logic. Simply adding Ethereum-style on-chain smart contracts to a CBDC creates two problems: (1) Privacy — all contract state and execution traces become visible to every validator, exposing sensitive financial information. (2) Performance — every node must re-execute every contract, creating a bottleneck that undermines the high throughput requirements of national payment systems. PArSEC resolves this tension through state channels: parties lock funds on the CBDC ledger, execute arbitrary contract logic off-chain between themselves, and settle the final state back to the ledger. The ledger only sees the initial lock and final settlement, not the intermediate computation steps. Zero-knowledge proofs ensure that the settlement is valid without revealing what the contract did.",
+      "nodes": []
+    },
+    {
+      "node_id": "2",
+      "title": "State Channel Architecture for UTXO-Based CBDCs",
+      "summary": "Describes PArSEC's state channel construction, which is specifically designed for UTXO-based ledgers like OpenCBDC/Hamilton rather than account-based systems. In a UTXO model, a state channel is opened by creating a special UTXO that locks funds and commits to an initial state. The channel parties then exchange signed state updates off-chain, each representing a new version of the contract state. When the channel is closed (cooperatively or via dispute), the final state is settled back to the ledger by spending the locked UTXO according to the agreed-upon output distribution. The UTXO model provides natural atomicity for channel operations and avoids the reentrancy vulnerabilities common in account-based smart contracts.",
+      "start_page": 3,
+      "end_page": 6,
+      "content": "PArSEC's state channel construction is tailored for UTXO-based CBDC ledgers. Channel lifecycle: (1) Open — parties create a funding transaction that locks their combined funds into a special channel UTXO, committing to an initial state hash. (2) Execute — parties exchange signed off-chain state updates. Each update includes a version number, new state hash, and output distribution. Only the latest version is valid. (3) Close (cooperative) — both parties sign a closing transaction that spends the channel UTXO according to the final state's output distribution. This is a single on-chain transaction. (4) Close (dispute) — if one party is unresponsive, the other submits the latest signed state update to the ledger with a zero-knowledge proof of validity. A challenge period allows the counterparty to submit a newer state. The UTXO model provides natural advantages: channel operations are atomic (no partial execution), there's no global state to corrupt, and the funding UTXO provides a clean lifecycle boundary.",
+      "nodes": []
+    },
+    {
+      "node_id": "3",
+      "title": "Zero-Knowledge Proofs for Confidential Execution",
+      "summary": "Details how PArSEC uses zero-knowledge proofs (ZKPs) to verify the validity of off-chain smart contract execution without revealing the contract logic, inputs, or intermediate states to the CBDC ledger. When a channel is settled (especially in a dispute), the settling party must prove that: (1) the claimed output distribution follows from valid execution of the agreed-upon contract, (2) no party received more funds than the channel contains, and (3) the state transitions from the initial state to the final state were all valid. PArSEC uses SNARKs (Succinct Non-interactive Arguments of Knowledge) for these proofs, making verification efficient for the CBDC validators. The ZKP circuit encodes the contract's execution semantics and the state transition rules.",
+      "start_page": 6,
+      "end_page": 9,
+      "content": "PArSEC integrates zero-knowledge proofs to maintain confidentiality during settlement. The ZKP system proves three properties without revealing contract details: (1) Execution validity — the output distribution is the correct result of executing the agreed-upon contract on the agreed-upon inputs. The contract bytecode is committed at channel opening, and the proof demonstrates that execution followed this code. (2) Conservation — the total outputs equal the total inputs (no money creation). (3) State consistency — each state transition was valid according to the contract rules. PArSEC uses SNARK-based proofs for efficiency: proof generation takes seconds, but verification takes milliseconds, suitable for high-throughput CBDC validators. The approach uses Madars Virza's work on efficient SNARK constructions. Contract privacy is preserved: the ledger learns only that a valid execution occurred and what the output distribution is, not what the contract did or what inputs were used.",
+      "nodes": []
+    },
+    {
+      "node_id": "4",
+      "title": "Integration with OpenCBDC/Hamilton",
+      "summary": "Describes how PArSEC integrates with the OpenCBDC (Hamilton) transaction processor. Hamilton's architecture processes transactions through a pipeline of sentinel (validation), atomizer (ordering), and shard (execution) components. PArSEC extends this pipeline by adding a new transaction type for state channel operations: channel-open, channel-close, and channel-dispute. The sentinel validates ZKPs during dispute resolution, the atomizer ensures channel operations are ordered correctly (preventing double-close attacks), and shards track channel state. The integration is designed to be modular: PArSEC is an optional extension that doesn't modify Hamilton's core transaction processing logic.",
+      "start_page": 9,
+      "end_page": 11,
+      "content": "PArSEC integrates with OpenCBDC/Hamilton as a modular extension. Three new transaction types are added to Hamilton's processing pipeline: (1) ChannelOpen — creates the funding UTXO, validated by the sentinel to ensure correct formatting and sufficient funds. (2) ChannelClose — cooperative close, spending the funding UTXO to the agreed-upon outputs. Standard UTXO validation applies. (3) ChannelDispute — non-cooperative close with ZKP. The sentinel verifies the zero-knowledge proof, the atomizer ensures no conflicting close has been processed, and the shard updates the channel state. A challenge period is enforced by the atomizer's ordering guarantees. The integration preserves Hamilton's performance characteristics: standard transactions are unaffected, and channel operations add minimal overhead because ZKP verification is fast (milliseconds). PArSEC demonstrates that CBDCs can support programmability without sacrificing the performance or simplicity of the base layer.",
+      "nodes": []
+    },
+    {
+      "node_id": "5",
+      "title": "Use Cases and Applications",
+      "summary": "Presents concrete use cases for PArSEC in a CBDC context: (1) Programmable escrow — automated release of funds upon condition satisfaction, useful for trade finance and real estate. (2) Compliance automation — encoding AML/KYC rules into contracts that execute privately, with proofs of compliance submitted to regulators. (3) Delivery-versus-payment (DvP) — atomic swap of securities for CBDC, enabling real-time gross settlement. (4) Cross-border payments — multi-party channels connecting different CBDC systems, with foreign exchange logic executed in the channel. Each use case demonstrates how PArSEC's privacy and programmability properties address real requirements of central banks and financial institutions.",
+      "start_page": 11,
+      "end_page": 13,
+      "content": "PArSEC enables several high-value use cases for CBDCs: (1) Programmable Escrow — funds are locked in a channel with release conditions encoded as a smart contract. The escrow executes automatically when conditions are met, with a ZKP proving correct execution. Neither the conditions nor their satisfaction are revealed to the ledger. (2) Compliance Automation — AML/KYC rules are encoded as contract logic. Transactions are checked against these rules off-chain, and a proof of compliance is generated. Regulators receive the proof without seeing individual transaction details. (3) Delivery-versus-Payment — a channel between a buyer, seller, and custodian executes an atomic swap of securities (represented as tokens) for CBDC. The atomicity guarantee ensures neither party bears settlement risk. (4) Cross-Border Payments — multi-hop channels connect different national CBDC systems. FX conversion logic executes in the channel, with each central bank's ledger only seeing domestic settlement transactions.",
+      "nodes": []
+    }
+  ],
+  "_metadata": {
+    "source_file": "parsec_exec_summary.pdf",
+    "total_pages": 13,
+    "source_path": "",
+    "authors": ["Sam Stuewe", "Madars Virza", "James Lovejoy", "Neha Narula"],
+    "venue": "MIT DCI Executive Summary",
+    "year": 2023
+  }
+}

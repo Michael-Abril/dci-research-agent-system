@@ -1,12 +1,13 @@
 """
 End-to-end document processing pipeline for the DCI Research Agent.
 
-Orchestrates the full flow: download → validate → index → register → reload.
-Provides a single entry point for processing new documents.
+Orchestrates the full flow: download -> validate -> index -> register -> reload.
+Supports both sequential and concurrent bulk processing with configurable parallelism.
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, Callable
 
@@ -24,11 +25,16 @@ logger = setup_logging("document_processing.pipeline")
 # Type for optional progress callback
 ProgressCallback = Callable[[str, str, float], None] | None
 
+# Concurrency limits
+MAX_DOWNLOAD_CONCURRENCY = 5
+MAX_INDEX_CONCURRENCY = 2
+
 
 class DocumentPipeline:
     """Unified document processing pipeline.
 
-    Coordinates: download → validate → generate tree index → save → register in DB → reload retriever.
+    Coordinates: download -> validate -> generate tree index -> save -> register in DB -> reload retriever.
+    Supports concurrent bulk processing with configurable parallelism.
     """
 
     def __init__(
@@ -166,62 +172,169 @@ class DocumentPipeline:
     async def process_all_registered(
         self,
         progress: ProgressCallback = None,
+        max_download_concurrency: int = MAX_DOWNLOAD_CONCURRENCY,
+        max_index_concurrency: int = MAX_INDEX_CONCURRENCY,
     ) -> dict[str, list[dict[str, Any]]]:
         """Process all documents in the DCI_DOCUMENT_SOURCES registry.
 
-        Skips documents that already have indexes.
+        Uses asyncio.Semaphore for concurrent downloads and index generation.
+        Skips documents that already have indexes (resume capability).
+
+        Args:
+            progress: Optional progress callback.
+            max_download_concurrency: Max parallel downloads.
+            max_index_concurrency: Max parallel index generations.
 
         Returns:
             Dict mapping domain -> list of pipeline results.
         """
-        results: dict[str, list[dict[str, Any]]] = {}
+        download_sem = asyncio.Semaphore(max_download_concurrency)
+        index_sem = asyncio.Semaphore(max_index_concurrency)
 
         total_docs = sum(len(papers) for papers in DCI_DOCUMENT_SOURCES.values())
         processed = 0
+        results: dict[str, list[dict[str, Any]]] = {
+            domain: [] for domain in DCI_DOCUMENT_SOURCES
+        }
 
-        for domain, papers in DCI_DOCUMENT_SOURCES.items():
-            results[domain] = []
-            for doc_id, info in papers.items():
-                url = info.get("url", "")
-                if not url:
-                    logger.warning("Skipping %s: no URL", doc_id)
-                    continue
+        async def _process_one(
+            domain: str, doc_id: str, info: dict[str, Any]
+        ) -> dict[str, Any]:
+            nonlocal processed
 
-                filename = info.get("filename", f"{doc_id}.pdf")
-                title = info.get("title", doc_id)
+            url = info.get("url", "")
+            if not url:
+                logger.info("Skipping %s: no URL", doc_id)
+                processed += 1
+                return {
+                    "doc_id": doc_id,
+                    "domain": domain,
+                    "filename": info.get("filename", f"{doc_id}.pdf"),
+                    "status": "skipped_no_url",
+                }
 
-                # Check if already indexed
-                index_path = self.indexes_dir / domain / f"{Path(filename).stem}.json"
-                if index_path.exists():
-                    logger.info("Already indexed: %s/%s", domain, filename)
-                    results[domain].append({
+            filename = info.get("filename", f"{doc_id}.pdf")
+            title = info.get("title", doc_id)
+
+            # Check if already indexed (resume capability)
+            index_path = self.indexes_dir / domain / f"{Path(filename).stem}.json"
+            if index_path.exists():
+                logger.info("Already indexed: %s/%s", domain, filename)
+                processed += 1
+                return {
+                    "doc_id": doc_id,
+                    "domain": domain,
+                    "filename": filename,
+                    "status": "already_indexed",
+                }
+
+            # Download with concurrency limit
+            async with download_sem:
+                download_result = await self.downloader.download_document(
+                    url=url, domain=domain, filename=filename, doc_id=doc_id
+                )
+
+            if download_result["status"] == "failed":
+                processed += 1
+                return {
+                    "doc_id": doc_id,
+                    "domain": domain,
+                    "filename": filename,
+                    "status": "download_failed",
+                    "error": download_result.get("error", ""),
+                }
+
+            pdf_path = Path(download_result["path"])
+            if not pdf_path.exists() or pdf_path.stat().st_size < 100:
+                processed += 1
+                return {
+                    "doc_id": doc_id,
+                    "domain": domain,
+                    "filename": filename,
+                    "status": "validation_failed",
+                }
+
+            # Generate index with concurrency limit
+            async with index_sem:
+                try:
+                    await self.index_manager.generate_index_for_document(
+                        pdf_path=pdf_path, domain=domain
+                    )
+                except Exception as e:
+                    logger.error("Indexing failed for %s: %s", filename, e)
+                    processed += 1
+                    return {
                         "doc_id": doc_id,
                         "domain": domain,
                         "filename": filename,
-                        "status": "already_indexed",
-                    })
-                    processed += 1
-                    continue
+                        "status": "index_failed",
+                        "error": str(e),
+                    }
 
-                # Process through pipeline
-                result = await self.process_document(
-                    url=url,
-                    domain=domain,
-                    filename=filename,
-                    doc_id=doc_id,
-                    title=title,
-                    progress=progress,
-                )
-                results[domain].append(result)
-                processed += 1
-
-                if progress:
-                    progress(
-                        "overall",
-                        f"Processed {processed}/{total_docs} documents",
-                        processed / total_docs,
+            # Register in database
+            if self.database:
+                try:
+                    await self.database.save_document_record(
+                        domain=domain,
+                        title=title,
+                        source_url=url,
+                        file_path=str(pdf_path),
+                        index_path=str(index_path),
+                        status="indexed",
+                        doc_id=doc_id or None,
                     )
+                except Exception:
+                    pass
 
+            processed += 1
+            if progress:
+                progress(
+                    "overall",
+                    f"Processed {processed}/{total_docs} documents",
+                    processed / total_docs,
+                )
+
+            return {
+                "doc_id": doc_id,
+                "domain": domain,
+                "filename": filename,
+                "status": "success",
+            }
+
+        # Build task list
+        tasks = []
+        for domain, papers in DCI_DOCUMENT_SOURCES.items():
+            for doc_id, info in papers.items():
+                tasks.append((domain, doc_id, info))
+
+        # Run all tasks concurrently (semaphores control actual parallelism)
+        coro_results = await asyncio.gather(
+            *[_process_one(d, did, info) for d, did, info in tasks],
+            return_exceptions=True,
+        )
+
+        # Organize results by domain
+        for i, res in enumerate(coro_results):
+            domain = tasks[i][0]
+            if isinstance(res, Exception):
+                results[domain].append({
+                    "doc_id": tasks[i][1],
+                    "domain": domain,
+                    "status": "error",
+                    "error": str(res),
+                })
+            else:
+                results[domain].append(res)
+
+        # Reload retriever once at the end
+        if self.retriever:
+            self.retriever.reload_indexes()
+
+        logger.info(
+            "Bulk processing complete: %d/%d documents processed",
+            processed,
+            total_docs,
+        )
         return results
 
     async def process_uploaded(

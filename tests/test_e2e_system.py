@@ -91,7 +91,7 @@ class TestSystemInitialization:
     def test_indexes_load(self, retriever):
         """Pre-built indexes load from data/indexes/."""
         loaded = retriever.get_loaded_indexes()
-        assert len(loaded) >= 6, f"Expected >= 6 indexes, got {len(loaded)}"
+        assert len(loaded) >= 16, f"Expected >= 16 indexes, got {len(loaded)}"
 
     def test_indexes_span_all_domains(self, retriever):
         """Indexes cover all 5 research domains."""
@@ -288,3 +288,100 @@ class TestCrossDomainQuery:
         all_agents = [routing["primary_agent"]] + routing.get("secondary_agents", [])
         assert "CBDC" in all_agents or "PRIVACY" in all_agents
         assert len(result["response"]) > 50
+
+
+# ---------------------------------------------------------------------------
+# 1.7 — Expanded Index Coverage (Spec Demo Queries)
+# ---------------------------------------------------------------------------
+
+class TestExpandedIndexCoverage:
+
+    @pytest.mark.asyncio
+    async def test_parsec_cbdc_query(self, orchestrator):
+        """PArSEC smart contracts for CBDC query hits new index."""
+        result = await orchestrator.process_query(
+            "How does PArSEC enable smart contract execution on CBDC ledgers?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "CBDC"
+
+    @pytest.mark.asyncio
+    async def test_opencbdc_architecture_query(self, orchestrator):
+        """OpenCBDC architecture query hits new index."""
+        result = await orchestrator.process_query(
+            "What is the OpenCBDC transaction processor architecture?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "CBDC"
+
+    @pytest.mark.asyncio
+    async def test_zkledger_privacy_query(self, orchestrator):
+        """zkLedger privacy-preserving auditing query hits new index."""
+        result = await orchestrator.process_query(
+            "How does zkLedger enable privacy-preserving auditing?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "PRIVACY"
+
+    @pytest.mark.asyncio
+    async def test_genius_act_analysis_query(self, orchestrator):
+        """GENIUS Act analysis query hits new stablecoin index."""
+        result = await orchestrator.process_query(
+            "What gaps exist in the GENIUS Act stablecoin regulation?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "STABLECOIN"
+
+    @pytest.mark.asyncio
+    async def test_stablecoins_treasury_query(self, orchestrator):
+        """Stablecoin treasury market impact query hits new index."""
+        result = await orchestrator.process_query(
+            "Will stablecoins impact the US Treasury market?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "STABLECOIN"
+
+    @pytest.mark.asyncio
+    async def test_lightning_network_query(self, orchestrator):
+        """Lightning Network query hits new bitcoin index."""
+        result = await orchestrator.process_query(
+            "How does the Bitcoin Lightning Network enable scalable payments?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "BITCOIN"
+
+    @pytest.mark.asyncio
+    async def test_double_spend_query(self, orchestrator):
+        """Double-spend counterattack query hits new bitcoin index."""
+        result = await orchestrator.process_query(
+            "What are double-spend counterattack strategies in Bitcoin?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "BITCOIN"
+
+    @pytest.mark.asyncio
+    async def test_programmability_framework_query(self, orchestrator):
+        """Programmability framework query hits new payment tokens index."""
+        result = await orchestrator.process_query(
+            "What is the programmability framework for token systems?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "PAYMENT_TOKENS"
+
+    @pytest.mark.asyncio
+    async def test_financial_inclusion_query(self, orchestrator):
+        """CBDC financial inclusion query hits new index."""
+        result = await orchestrator.process_query(
+            "Does CBDC expand financial inclusion or deepen the divide?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "CBDC"
+
+    @pytest.mark.asyncio
+    async def test_stablecoin_analogies_query(self, orchestrator):
+        """Stablecoin analogies query hits new index."""
+        result = await orchestrator.process_query(
+            "What are the limits of existing stablecoin analogies like money market funds?"
+        )
+        assert len(result["response"]) > 50
+        assert result["routing"]["primary_agent"] == "STABLECOIN"

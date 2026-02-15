@@ -19,11 +19,11 @@ logger = setup_logging("agents.router")
 
 # Default routing for when the LLM router fails
 _KEYWORD_ROUTING: dict[str, list[str]] = {
-    "CBDC": ["cbdc", "hamilton", "opencbdc", "parsec", "central bank", "digital currency", "federal reserve", "digital pound"],
-    "PRIVACY": ["privacy", "zero-knowledge", "zkp", "snark", "stark", "fhe", "homomorphic", "mpc", "weak sentinel", "zerocash", "anonymous", "auditab"],
-    "STABLECOIN": ["stablecoin", "genius act", "treasury", "redemption", "usdc", "usdt", "tether", "reserve", "par value", "peg"],
-    "BITCOIN": ["bitcoin", "utreexo", "fee estimat", "coinjoin", "utxo", "mining", "lightning", "taproot", "btc"],
-    "PAYMENT_TOKENS": ["token", "erc", "kinexys", "interoperab", "programmab", "j.p. morgan", "onyx"],
+    "CBDC": ["cbdc", "hamilton", "opencbdc", "parsec", "central bank", "digital currency", "federal reserve", "digital pound", "financial inclusion"],
+    "PRIVACY": ["privacy", "zero-knowledge", "zkp", "snark", "stark", "fhe", "homomorphic", "mpc", "weak sentinel", "zerocash", "anonymous", "auditab", "zkledger", "whirlpool", "confidential"],
+    "STABLECOIN": ["stablecoin", "genius act", "treasury market", "redemption", "usdc", "usdt", "tether", "reserve", "par value", "peg", "analogi"],
+    "BITCOIN": ["bitcoin", "utreexo", "fee estimat", "coinjoin", "utxo", "mining", "lightning", "taproot", "btc", "double-spend", "double spend", "counterattack", "nakamoto", "spacemint", "vulnerability", "disclosure", "blockchain voting", "undercutting"],
+    "PAYMENT_TOKENS": ["token", "erc", "kinexys", "interoperab", "programmab", "j.p. morgan", "onyx", "multi-currency", "exchange platform"],
 }
 
 
