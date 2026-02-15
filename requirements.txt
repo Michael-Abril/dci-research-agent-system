@@ -2,23 +2,17 @@
 
 # ── Core Framework ──────────────────────────────────────────────────
 streamlit>=1.31.0
-fastapi>=0.100.0
-uvicorn>=0.23.0
 pydantic>=2.0.0
 python-dotenv>=1.0.0
 
-# ── LLM / Agent Orchestration ──────────────────────────────────────
-langgraph>=0.2.0
-langchain>=0.3.0
-langchain-community>=0.3.0
-langchain-neo4j>=0.2.0
-openai>=1.0.0               # OpenAI-compatible client (used for Groq, Together, Fireworks, Ollama)
+# ── LLM Client ─────────────────────────────────────────────────────
+openai>=1.0.0               # OpenAI-compatible client (Groq, Together, Fireworks, Ollama)
 groq>=0.9.0
 httpx>=0.27.0
 
-# ── Knowledge Graph ─────────────────────────────────────────────────
-neo4j>=5.0.0
-# neo4j-graphrag>=1.0.0      # Optional: neo4j's official GraphRAG package
+# ── Knowledge Graph (embedded — no server needed) ──────────────────
+networkx>=3.0
+# Persistence via JSON serialization — no external DB required
 
 # ── Vector Store & Embeddings ───────────────────────────────────────
 chromadb>=0.5.0
@@ -27,6 +21,12 @@ sentence-transformers>=2.2.0
 # ── Document Processing ─────────────────────────────────────────────
 PyMuPDF>=1.23.0              # PDF text extraction
 rank-bm25>=0.2.2             # BM25 keyword search
+
+# ── Automated Paper Acquisition ─────────────────────────────────────
+arxiv>=2.0.0                 # arXiv API client
+requests>=2.31.0             # HTTP requests (Semantic Scholar, IACR, GitHub)
+beautifulsoup4>=4.12.0       # Web scraping for DCI publications page
+feedparser>=6.0.0            # IACR ePrint RSS feed
 
 # ── Utilities ───────────────────────────────────────────────────────
 tiktoken>=0.5.0              # Token counting

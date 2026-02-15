@@ -21,4 +21,4 @@ def setup_logging():
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
     logging.getLogger("chromadb").setLevel(logging.WARNING)
-    logging.getLogger("neo4j").setLevel(logging.WARNING)
+    logging.getLogger("networkx").setLevel(logging.WARNING)

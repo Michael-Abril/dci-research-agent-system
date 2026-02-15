@@ -2,7 +2,7 @@
 Embedding generation using sentence-transformers.
 
 Uses a lightweight model (all-MiniLM-L6-v2, 384 dims) that runs on CPU.
-Embeddings are used for vector search in both ChromaDB and Neo4j.
+Embeddings are used for vector search in ChromaDB and the knowledge graph.
 """
 
 from __future__ import annotations

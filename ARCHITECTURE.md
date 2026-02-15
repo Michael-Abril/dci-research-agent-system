@@ -11,7 +11,7 @@ The DCI Research Agent System is a **multi-agent, knowledge-graph-grounded resea
 ### What Makes This System Revolutionary
 
 1. **Specialized SLM-per-Agent Architecture** — Each domain agent runs its own Small Language Model (1B-8B params), purpose-selected for that domain. No monolithic LLM.
-2. **Knowledge Graph RAG** — Documents are not just chunked and embedded. Entities, relationships, and concepts are extracted into a traversable knowledge graph (Neo4j), enabling multi-hop reasoning across papers.
+2. **Knowledge Graph RAG** — Documents are not just chunked and embedded. Entities, relationships, and concepts are extracted into a traversable knowledge graph (embedded NetworkX), enabling multi-hop reasoning across papers.
 3. **Autonomous Feedback Loops** — The system can operate without human intervention: discovering research gaps, finding bugs in GitHub repos, generating new research directions, and self-correcting.
 4. **Decentralized Compute Ready** — Designed to run on Akash Network for cost-effective GPU inference, not locked to any cloud provider.
 5. **Open Source** — Every component is open-source, reproducible, and extensible by the global research community.
@@ -34,7 +34,7 @@ The DCI Research Agent System is a **multi-agent, knowledge-graph-grounded resea
 │  Synthesis Agent │ Critique Agent                                       │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                     LAYER 3: RETRIEVAL & REASONING                      │
-│  Knowledge Graph RAG (Neo4j) │ Vector Search (ChromaDB) │              │
+│  Knowledge Graph RAG (NetworkX) │ Vector Search (ChromaDB) │              │
 │  BM25 Keyword Search │ PageIndex Tree Search │ Hybrid Router           │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                     LAYER 2: KNOWLEDGE GRAPH                            │
@@ -106,7 +106,7 @@ PDF Document
     ↓
 [5. Relationship Mapping] ─── SLM identifies relationships between entities
     ↓
-[6. Graph Writing] ─── Neo4j: create nodes and edges with embeddings
+[6. Graph Writing] ─── NetworkX: create nodes and edges with embeddings
     ↓
 [7. Entity Resolution] ─── Deduplicate ("ZKP" = "zero-knowledge proof" = "ZK proof")
     ↓
@@ -352,16 +352,13 @@ Every document must pass:
 | Component | Technology | Version | License |
 |-----------|-----------|---------|---------|
 | Orchestration | LangGraph | 1.0+ | MIT |
-| Knowledge Graph | Neo4j Community Edition | 5.x | GPL-3.0 |
+| Knowledge Graph | NetworkX (embedded) | 3.0+ | BSD |
 | Vector Store | ChromaDB | 0.5+ | Apache 2.0 |
 | Embedding | sentence-transformers | latest | Apache 2.0 |
 | PDF Processing | PyMuPDF (fitz) | latest | AGPL-3.0 |
 | SLM Serving | Ollama | latest | MIT |
 | Frontend | Streamlit | 1.31+ | Apache 2.0 |
-| API Framework | FastAPI | 0.100+ | MIT |
-| Graph Python | neo4j (driver) | 5.x | Apache 2.0 |
 | BM25 Search | rank-bm25 | latest | Apache 2.0 |
-| Task Queue | Celery + Redis | latest | BSD |
 | Monitoring | Langfuse | latest | MIT |
 
 ### 7.2 SLM Models
@@ -380,7 +377,7 @@ Every document must pass:
 |-----------|-------------|------------|
 | Compute | Local CPU/GPU | Akash Network (A100 ~$0.75/hr) |
 | SLM Inference | Groq/Together/Fireworks APIs | Self-hosted Ollama on Akash |
-| Graph DB | Neo4j Community (Docker) | Neo4j Community (Akash) |
+| Graph DB | NetworkX Community (Docker) | NetworkX Community (Akash) |
 | Vector DB | ChromaDB (local) | ChromaDB (persistent volume) |
 | Frontend | Streamlit (local) | Streamlit Community Cloud |
 | Monitoring | Langfuse (local) | Langfuse Cloud |
@@ -420,18 +417,18 @@ dci-research-agent-system/
 │   │
 │   ├── knowledge_graph/
 │   │   ├── __init__.py
-│   │   ├── schema.py                  # Neo4j graph schema definitions
+│   │   ├── schema.py                  # NetworkX graph schema definitions
 │   │   ├── entity_extractor.py        # SLM-powered entity/relationship extraction
-│   │   ├── graph_writer.py            # Write nodes/edges to Neo4j
+│   │   ├── graph_writer.py            # Write nodes/edges to NetworkX
 │   │   ├── entity_resolver.py         # Deduplicate entities across documents
 │   │   ├── community_detector.py      # Leiden community detection for topic clusters
-│   │   └── graph_client.py            # Neo4j connection management
+│   │   └── graph_client.py            # NetworkX connection management
 │   │
 │   ├── retrieval/
 │   │   ├── __init__.py
 │   │   ├── hybrid_retriever.py        # Multi-strategy retrieval orchestrator
 │   │   ├── vector_retriever.py        # ChromaDB vector similarity search
-│   │   ├── graph_retriever.py         # Neo4j graph traversal retrieval
+│   │   ├── graph_retriever.py         # NetworkX graph traversal retrieval
 │   │   ├── bm25_retriever.py          # BM25 keyword search
 │   │   └── reranker.py                # Result ranking and deduplication
 │   │
@@ -522,7 +519,7 @@ dci-research-agent-system/
 │   │   ├── stablecoins/
 │   │   ├── payment_tokens/
 │   │   └── bitcoin/
-│   └── graph/                         # Neo4j data directory
+│   └── graph/                         # NetworkX data directory
 │
 ├── scripts/
 │   ├── download_documents.py          # Acquire DCI papers
@@ -553,7 +550,7 @@ dci-research-agent-system/
 │   └── test_demo_queries.py           # The 11 demo queries that must pass
 │
 ├── deploy/
-│   ├── docker-compose.yml             # Local development (Neo4j + app)
+│   ├── docker-compose.yml             # Local development (NetworkX + app)
 │   ├── Dockerfile                     # Application container
 │   ├── akash/
 │   │   ├── deploy.yaml                # Akash SDL for GPU inference
@@ -601,13 +598,14 @@ dci-research-agent-system/
 1. **Groq API Key** — Free signup at console.groq.com. Needed for SLM inference.
    - Set as environment variable: `GROQ_API_KEY=gsk_...`
 
-2. **DCI Research Papers (PDFs)** — Download from dci.mit.edu/publications:
-   - Place in `data/documents/{domain}/` directories
-   - Priority: Hamilton paper, Weak Sentinel, Hidden Plumbing of Stablecoins
+2. **DCI Research Papers** — Downloaded automatically:
+   - Run `python scripts/download_documents.py`
+   - Papers are placed in `data/documents/{domain}/` directories
+   - Sources: arXiv, Semantic Scholar, IACR ePrint, GitHub (mit-dci)
 
-3. **Neo4j** — We'll use Docker for local development:
-   - `docker run -p 7474:7474 -p 7687:7687 neo4j:community`
-   - Or we can use the free AuraDB tier
+3. **Knowledge Graph** — Embedded NetworkX (no server needed):
+   - Pure Python, persists to `data/graph/knowledge_graph.json`
+   - No Docker, no external database required
 
 ### For Production Deployment:
 
@@ -623,7 +621,7 @@ dci-research-agent-system/
 |------|------|-------------|
 | 0-1 | Core infrastructure | config/, settings, constants, LLM client abstraction |
 | 1-3 | Document processing | PDF extraction, semantic chunking, embeddings |
-| 3-5 | Knowledge graph | Schema, entity extraction, graph writing, Neo4j integration |
+| 3-5 | Knowledge graph | Schema, entity extraction, graph writing, NetworkX integration |
 | 5-7 | Retrieval system | Vector search, graph traversal, BM25, hybrid retriever |
 | 7-9 | Agent system | Base agent, router, 5 domain agents, math/code agents |
 | 9-11 | Orchestrator | LangGraph workflow, query pipeline, synthesis, critique |

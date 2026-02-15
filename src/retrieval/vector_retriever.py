@@ -11,11 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import chromadb
-from chromadb.config import Settings as ChromaSettings
-
 from config.settings import settings
-from src.document_processing.embedder import Embedder
 
 logger = logging.getLogger(__name__)
 
@@ -24,24 +20,25 @@ class VectorRetriever:
     """ChromaDB-backed vector search over document sections."""
 
     def __init__(self, persist_dir: Optional[str] = None):
+        import chromadb
+
         persist_dir = persist_dir or str(settings.paths.indexes_dir / "chroma")
-        self._client = chromadb.Client(
-            ChromaSettings(
-                chroma_db_impl="duckdb+parquet",
-                persist_directory=persist_dir,
-                anonymized_telemetry=False,
-            )
-        )
+        Path(persist_dir).mkdir(parents=True, exist_ok=True)
+
+        self._client = chromadb.PersistentClient(path=persist_dir)
         self._collection = self._client.get_or_create_collection(
             name="dci_sections",
             metadata={"hnsw:space": "cosine"},
         )
-        logger.info("VectorRetriever initialized (persist: %s)", persist_dir)
+        logger.info("VectorRetriever initialized (persist: %s, count: %d)",
+                     persist_dir, self._collection.count())
 
     def add_sections(self, sections: List[Dict[str, Any]]) -> None:
         """Add document sections to the vector store."""
         if not sections:
             return
+
+        from src.document_processing.embedder import Embedder
 
         texts = [s.get("content", "") for s in sections]
         embeddings = Embedder.embed(texts)
@@ -76,6 +73,8 @@ class VectorRetriever:
 
         Returns list of {content, title, page_start, page_end, paper_title, score}.
         """
+        from src.document_processing.embedder import Embedder
+
         query_embedding = Embedder.embed_single(query)
 
         where_filter = None
@@ -89,15 +88,16 @@ class VectorRetriever:
         )
 
         output = []
-        for i in range(len(results["ids"][0])):
-            output.append({
-                "content": results["documents"][0][i],
-                "title": results["metadatas"][0][i].get("title", ""),
-                "page_start": results["metadatas"][0][i].get("page_start", 0),
-                "page_end": results["metadatas"][0][i].get("page_end", 0),
-                "paper_title": results["metadatas"][0][i].get("paper_title", ""),
-                "domain": results["metadatas"][0][i].get("domain", ""),
-                "score": results["distances"][0][i] if results["distances"] else 0,
-            })
+        if results and results["ids"] and results["ids"][0]:
+            for i in range(len(results["ids"][0])):
+                output.append({
+                    "content": results["documents"][0][i],
+                    "title": results["metadatas"][0][i].get("title", ""),
+                    "page_start": results["metadatas"][0][i].get("page_start", 0),
+                    "page_end": results["metadatas"][0][i].get("page_end", 0),
+                    "paper_title": results["metadatas"][0][i].get("paper_title", ""),
+                    "domain": results["metadatas"][0][i].get("domain", ""),
+                    "score": results["distances"][0][i] if results.get("distances") else 0,
+                })
 
         return output

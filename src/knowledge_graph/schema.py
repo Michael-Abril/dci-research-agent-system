@@ -1,36 +1,58 @@
 """
-Neo4j graph schema — Cypher statements to initialise the knowledge graph.
+Knowledge graph schema definition.
 
-Run once when setting up a new Neo4j instance.  Idempotent (uses IF NOT EXISTS).
+With the embedded NetworkX backend, the graph is schema-free —
+there are no constraints to enforce. This module documents the
+expected node labels, relationship types, and properties as a
+reference for the rest of the codebase.
 """
 
-INIT_CONSTRAINTS = [
-    "CREATE CONSTRAINT paper_title IF NOT EXISTS FOR (p:Paper) REQUIRE p.title IS UNIQUE",
-    "CREATE CONSTRAINT author_name IF NOT EXISTS FOR (a:Author) REQUIRE a.name IS UNIQUE",
-    "CREATE CONSTRAINT concept_name IF NOT EXISTS FOR (c:Concept) REQUIRE c.name IS UNIQUE",
-    "CREATE CONSTRAINT method_name IF NOT EXISTS FOR (m:Method) REQUIRE m.name IS UNIQUE",
-    "CREATE CONSTRAINT institution_name IF NOT EXISTS FOR (i:Institution) REQUIRE i.name IS UNIQUE",
-]
+# ── Node labels and their expected properties ────────────────────────
 
-INIT_INDEXES = [
-    # Full-text search indexes
-    "CREATE FULLTEXT INDEX paper_search IF NOT EXISTS FOR (p:Paper) ON EACH [p.title, p.abstract]",
-    "CREATE FULLTEXT INDEX section_search IF NOT EXISTS FOR (s:Section) ON EACH [s.title, s.content]",
-    "CREATE FULLTEXT INDEX concept_search IF NOT EXISTS FOR (c:Concept) ON EACH [c.name, c.description]",
-]
+NODE_LABELS = {
+    "Paper": {
+        "required": ["title"],
+        "optional": ["authors", "year", "domain", "abstract", "pdf_path", "url"],
+    },
+    "Section": {
+        "required": ["title", "paper_title"],
+        "optional": ["page_start", "page_end", "content", "embedding"],
+    },
+    "Author": {
+        "required": ["name"],
+        "optional": ["affiliation"],
+    },
+    "Concept": {
+        "required": ["name"],
+        "optional": ["description", "domain"],
+    },
+    "Method": {
+        "required": ["name"],
+        "optional": ["description", "type"],
+    },
+    "Result": {
+        "required": [],
+        "optional": ["description", "metric", "value"],
+    },
+}
 
-# Vector index for Section embeddings (Neo4j 5.11+)
-INIT_VECTOR_INDEX = """
-CREATE VECTOR INDEX section_embedding IF NOT EXISTS
-FOR (s:Section)
-ON (s.embedding)
-OPTIONS {indexConfig: {
-  `vector.dimensions`: 384,
-  `vector.similarity_function`: 'cosine'
-}}
-"""
+# ── Relationship types ───────────────────────────────────────────────
+
+RELATIONSHIP_TYPES = [
+    "AUTHORED_BY",       # Paper → Author
+    "CONTAINS_SECTION",  # Paper → Section
+    "INTRODUCES",        # Paper → Concept
+    "USES_METHOD",       # Paper → Method
+    "REPORTS_RESULT",    # Paper → Result
+    "RELATED_TO",        # Concept ↔ Concept
+    "APPLIED_TO",        # Method → Concept
+]
 
 
 def get_init_statements():
-    """Return all Cypher statements needed to initialise the graph schema."""
-    return INIT_CONSTRAINTS + INIT_INDEXES + [INIT_VECTOR_INDEX]
+    """
+    No-op for the embedded NetworkX backend (schema-free).
+    Kept for interface compatibility with code that calls init_schema().
+    Returns an empty list.
+    """
+    return []

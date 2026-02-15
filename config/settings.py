@@ -45,15 +45,6 @@ class InferenceSettings:
 
 
 @dataclass
-class Neo4jSettings:
-    """Knowledge graph database configuration."""
-
-    uri: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-    username: str = os.getenv("NEO4J_USERNAME", "neo4j")
-    password: str = os.getenv("NEO4J_PASSWORD", "password")
-
-
-@dataclass
 class PathSettings:
     """Filesystem path configuration."""
 
@@ -89,7 +80,6 @@ class Settings:
     """Root settings object aggregating all sub-settings."""
 
     inference: InferenceSettings = field(default_factory=InferenceSettings)
-    neo4j: Neo4jSettings = field(default_factory=Neo4jSettings)
     paths: PathSettings = field(default_factory=PathSettings)
     app: AppSettings = field(default_factory=AppSettings)
 

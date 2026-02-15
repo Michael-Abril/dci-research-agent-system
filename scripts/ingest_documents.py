@@ -123,7 +123,7 @@ async def main():
             gc.init_schema()
             graph_writer = GraphWriter(gc)
         except Exception as e:
-            logger.warning("Neo4j not available: %s. Skipping graph writing.", e)
+            logger.warning("Graph init failed: %s. Skipping graph writing.", e)
 
     vector_retriever = VectorRetriever()
     entity_extractor = None if args.skip_entities else EntityExtractor()

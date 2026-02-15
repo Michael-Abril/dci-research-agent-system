@@ -1,17 +1,19 @@
 """
-Community detection on the knowledge graph using the Leiden algorithm.
+Community detection on the knowledge graph.
 
 Identifies topic clusters (communities) within the graph so the system
 can provide hierarchical summaries and discover cross-domain connections.
 
-Requires Neo4j GDS (Graph Data Science) plugin for production use.
-Falls back to a simple connected-components approach otherwise.
+Uses NetworkX built-in community detection algorithms — no external
+plugins or servers required.
 """
 
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict, List
+
+import networkx as nx
 
 from src.knowledge_graph.graph_client import GraphClient
 
@@ -24,79 +26,101 @@ class CommunityDetector:
     def __init__(self, graph_client: GraphClient):
         self.gc = graph_client
 
-    def detect_communities_gds(self) -> List[Dict[str, Any]]:
+    def detect_communities(self) -> List[Dict[str, Any]]:
         """
-        Run Leiden community detection via Neo4j GDS.
+        Run community detection using the Louvain algorithm on
+        Concept and Method nodes connected by RELATED_TO / APPLIED_TO edges.
 
-        Requires:
-          - Neo4j GDS plugin installed
-          - Concept and Method nodes with RELATED_TO / APPLIED_TO edges
+        Returns list of {name, community_id} dicts.
         """
+        graph = self.gc._graph
+
+        # Build an undirected subgraph of Concept + Method nodes
+        relevant_nodes = [
+            nid for nid, attrs in graph.nodes(data=True)
+            if attrs.get("label") in ("Concept", "Method")
+        ]
+
+        if len(relevant_nodes) < 2:
+            logger.info("Too few concept/method nodes for community detection.")
+            return self._fallback_by_domain()
+
+        subgraph = graph.subgraph(relevant_nodes).copy()
+        undirected = subgraph.to_undirected()
+
+        # Filter to only RELATED_TO and APPLIED_TO edges
+        edges_to_remove = [
+            (u, v) for u, v, d in undirected.edges(data=True)
+            if d.get("relation") not in ("RELATED_TO", "APPLIED_TO", "USES_METHOD")
+        ]
+        undirected.remove_edges_from(edges_to_remove)
+
+        # Remove isolated nodes (no relevant edges)
+        isolates = list(nx.isolates(undirected))
+        undirected.remove_nodes_from(isolates)
+
+        if undirected.number_of_nodes() < 2:
+            return self._fallback_by_domain()
+
         try:
-            # Project the subgraph
-            self.gc.run(
-                """
-                CALL gds.graph.project(
-                    'concept_graph',
-                    ['Concept', 'Method'],
-                    {
-                        RELATED_TO: {orientation: 'UNDIRECTED'},
-                        APPLIED_TO: {orientation: 'UNDIRECTED'}
-                    }
-                )
-                """
+            communities = nx.community.louvain_communities(
+                undirected, resolution=1.0, seed=42
             )
-
-            # Run Leiden
-            result = self.gc.run(
-                """
-                CALL gds.leiden.stream('concept_graph')
-                YIELD nodeId, communityId
-                RETURN gds.util.asNode(nodeId).name AS name,
-                       communityId
-                ORDER BY communityId, name
-                """
-            )
-
-            # Clean up projection
-            self.gc.run("CALL gds.graph.drop('concept_graph')")
-
-            return result
-
         except Exception as e:
-            logger.warning("GDS community detection failed: %s. Using fallback.", e)
-            return self.detect_communities_fallback()
+            logger.warning("Louvain community detection failed: %s. Using fallback.", e)
+            return self._fallback_by_domain()
 
-    def detect_communities_fallback(self) -> List[Dict[str, Any]]:
+        results = []
+        for community_id, members in enumerate(communities):
+            for node_id in members:
+                attrs = graph.nodes.get(node_id, {})
+                results.append({
+                    "name": attrs.get("name", node_id),
+                    "community_id": community_id,
+                    "label": attrs.get("label", ""),
+                })
+
+        results.sort(key=lambda x: (x["community_id"], x["name"]))
+        return results
+
+    def _fallback_by_domain(self) -> List[Dict[str, Any]]:
         """
-        Simple community detection: group concepts by their domain tag
-        and by direct RELATED_TO connections.
+        Simple fallback: group concepts by their domain tag
+        and include direct RELATED_TO connections.
         """
-        return self.gc.run(
-            """
-            MATCH (c:Concept)
-            OPTIONAL MATCH (c)-[:RELATED_TO]-(other:Concept)
-            RETURN c.name AS name,
-                   c.domain AS domain,
-                   collect(DISTINCT other.name) AS related
-            ORDER BY c.domain, c.name
-            """
-        )
+        graph = self.gc._graph
+        results = []
+
+        for node_id, attrs in graph.nodes(data=True):
+            if attrs.get("label") != "Concept":
+                continue
+
+            related = []
+            for neighbor in graph.successors(node_id):
+                edge = graph.edges[node_id, neighbor]
+                if edge.get("relation") == "RELATED_TO":
+                    n_attrs = graph.nodes.get(neighbor, {})
+                    related.append(n_attrs.get("name", neighbor))
+            for neighbor in graph.predecessors(node_id):
+                edge = graph.edges[neighbor, node_id]
+                if edge.get("relation") == "RELATED_TO":
+                    n_attrs = graph.nodes.get(neighbor, {})
+                    related.append(n_attrs.get("name", neighbor))
+
+            results.append({
+                "name": attrs.get("name", node_id),
+                "domain": attrs.get("domain", ""),
+                "related": list(set(related)),
+            })
+
+        results.sort(key=lambda x: (x.get("domain", ""), x["name"]))
+        return results
 
     def get_cross_domain_connections(self) -> List[Dict[str, Any]]:
         """
         Find concepts that bridge multiple domains — these are the
         most interesting for cross-domain research synthesis.
+
+        Delegates to GraphClient.get_cross_domain_concepts().
         """
-        return self.gc.run(
-            """
-            MATCH (c:Concept)<-[:INTRODUCES]-(p1:Paper)
-            MATCH (c)<-[:INTRODUCES]-(p2:Paper)
-            WHERE p1.domain <> p2.domain
-            RETURN c.name AS concept,
-                   collect(DISTINCT p1.domain) + collect(DISTINCT p2.domain) AS domains,
-                   collect(DISTINCT p1.title) + collect(DISTINCT p2.title) AS papers
-            ORDER BY size(domains) DESC
-            LIMIT 20
-            """
-        )
+        return self.gc.get_cross_domain_concepts()

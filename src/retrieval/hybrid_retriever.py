@@ -19,7 +19,7 @@ class HybridRetriever:
     """
     Orchestrates multi-strategy retrieval:
     - Vector search (ChromaDB) for semantic similarity
-    - Graph traversal (Neo4j) for relationship-based context
+    - Graph traversal (NetworkX) for relationship-based context
     - BM25 for lexical keyword matching
     """
 
