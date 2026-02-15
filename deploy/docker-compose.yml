@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8501:8501"  # Streamlit
+    env_file:
+      - ../.env
+    volumes:
+      - ../data:/app/data

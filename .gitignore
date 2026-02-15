@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data (large files — not committed to git)
+data/documents/**/*.pdf
+data/graph/
+data/indexes/**/*.json
+data/indexes/**/*.bin
+
+# Keep directory structure
+!data/documents/.gitkeep
+!data/documents/**/.gitkeep
+!data/indexes/.gitkeep
+!data/indexes/**/.gitkeep
+!data/graph/.gitkeep
+
+# Neo4j
+neo4j_data/
+plugins/
+
+# ChromaDB
+chroma_data/
+
+# Logs
+*.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
