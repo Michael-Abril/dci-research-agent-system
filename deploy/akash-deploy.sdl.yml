@@ -1,0 +1,74 @@
+---
+version: "2.0"
+
+services:
+  dci-agent:
+    image: ghcr.io/michael-abril/dci-research-agent-system:latest
+    expose:
+      - port: 8501
+        as: 80
+        to:
+          - global: true
+    env:
+      - GROQ_API_KEY=
+      - TOGETHER_API_KEY=
+      - FIREWORKS_API_KEY=
+      - OLLAMA_BASE_URL=http://localhost:11434
+      - INFERENCE_PRIORITY=ollama,groq,together,fireworks
+      - LOG_LEVEL=INFO
+      - STREAMLIT_PORT=8501
+    command:
+      - /bin/sh
+      - -c
+      - |
+        # Start Ollama in the background for self-hosted SLM inference
+        ollama serve &
+        sleep 5
+        # Pull quantized models (fits in ~25 GB VRAM on A100 40GB)
+        ollama pull gemma3:1b
+        ollama pull qwen3:4b
+        ollama pull qwen3:8b
+        ollama pull deepseek-r1:7b-qwen-distill
+        ollama pull phi4-mini
+        # Launch the Streamlit application
+        streamlit run app/main.py --server.port=8501 --server.address=0.0.0.0
+    params:
+      storage:
+        data:
+          mount: /app/data
+          readOnly: false
+
+profiles:
+  compute:
+    dci-agent:
+      resources:
+        cpu:
+          units: 8
+        memory:
+          size: 32Gi
+        storage:
+          - size: 50Gi
+        gpu:
+          units: 1
+          attributes:
+            vendor:
+              nvidia:
+                - model: a100
+                  ram: 40Gi
+  placement:
+    dci:
+      attributes:
+        region: us-west
+      signedBy:
+        anyOf:
+          - akash1365ez8fqpkqq9vdcuu29mvtgz0cnhqd655m0c
+      pricing:
+        dci-agent:
+          denom: uakt
+          amount: 10000
+
+deployment:
+  dci-agent:
+    dci:
+      profile: dci-agent
+      count: 1
