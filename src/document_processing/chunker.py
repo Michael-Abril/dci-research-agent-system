@@ -11,15 +11,36 @@ import logging
 import re
 from typing import Any, Dict, List
 
-import tiktoken
-
 logger = logging.getLogger(__name__)
 
-_encoder = tiktoken.get_encoding("cl100k_base")
+# Lazy-loaded tiktoken encoder with fallback to word-based counting
+_encoder = None
+_encoder_loaded = False
+
+
+def _get_encoder():
+    """Lazily load the tiktoken encoder, returning None if unavailable."""
+    global _encoder, _encoder_loaded
+    if _encoder_loaded:
+        return _encoder
+    _encoder_loaded = True
+    try:
+        import tiktoken
+        _encoder = tiktoken.get_encoding("cl100k_base")
+        logger.info("Loaded tiktoken cl100k_base encoder.")
+    except Exception as e:
+        logger.warning("tiktoken encoder unavailable (%s); falling back to word-based counting.", e)
+        _encoder = None
+    return _encoder
 
 
 def count_tokens(text: str) -> int:
-    return len(_encoder.encode(text))
+    """Count tokens using tiktoken if available, else approximate via word count."""
+    enc = _get_encoder()
+    if enc is not None:
+        return len(enc.encode(text))
+    # Fallback: ~1.3 tokens per whitespace-delimited word is a reasonable approximation
+    return int(len(text.split()) * 1.3)
 
 
 class SemanticChunker:
