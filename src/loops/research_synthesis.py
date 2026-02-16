@@ -53,22 +53,45 @@ class ResearchSynthesisLoop:
                 logger.warning("Cross-domain analysis failed: %s", e)
 
         # Phase 2: Identify research gaps
-        # Look for concepts mentioned but not well-covered
+        # Find Concept nodes that are not introduced by any Paper.
         if self.gc:
             try:
-                gaps = self.gc.run(
-                    """
-                    MATCH (c:Concept)
-                    WHERE NOT EXISTS { MATCH (c)<-[:INTRODUCES]-(p:Paper) }
-                    RETURN c.name AS concept, c.description AS description
-                    LIMIT 20
-                    """
-                )
+                gaps = self._find_research_gaps()
                 results["research_gaps"] = gaps
             except Exception as e:
                 logger.warning("Gap analysis failed: %s", e)
 
         return results
+
+    def _find_research_gaps(self) -> List[Dict[str, Any]]:
+        """Find concepts not introduced by any paper (using NetworkX graph)."""
+        graph = self.gc._graph
+        gaps = []
+
+        for node_id, attrs in graph.nodes(data=True):
+            if attrs.get("label") != "Concept":
+                continue
+
+            # Check if any Paper INTRODUCES this Concept
+            has_introducing_paper = False
+            for pred in graph.predecessors(node_id):
+                edge_data = graph.edges[pred, node_id]
+                pred_attrs = graph.nodes.get(pred, {})
+                if (edge_data.get("relation") == "INTRODUCES"
+                        and pred_attrs.get("label") == "Paper"):
+                    has_introducing_paper = True
+                    break
+
+            if not has_introducing_paper:
+                gaps.append({
+                    "concept": attrs.get("name", node_id),
+                    "description": attrs.get("description", ""),
+                })
+
+            if len(gaps) >= 20:
+                break
+
+        return gaps
 
     async def generate_insight_report(self, insights: List[Dict[str, Any]]) -> str:
         """

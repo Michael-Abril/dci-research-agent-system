@@ -40,22 +40,7 @@ class IdeaGenerationLoop:
 
         # Step 1: Find methods that could transfer across domains
         if self.gc:
-            transferable = self.gc.run(
-                """
-                MATCH (m:Method)<-[:USES_METHOD]-(p1:Paper)
-                MATCH (c:Concept)<-[:INTRODUCES]-(p2:Paper)
-                WHERE p1.domain <> p2.domain
-                  AND NOT EXISTS {
-                    MATCH (p2)-[:USES_METHOD]->(m)
-                  }
-                RETURN m.name AS method,
-                       m.description AS method_desc,
-                       p1.domain AS source_domain,
-                       c.name AS target_concept,
-                       p2.domain AS target_domain
-                LIMIT 10
-                """
-            )
+            transferable = self._find_transferable_methods()
 
             for item in transferable:
                 ideas.append({
@@ -73,6 +58,88 @@ class IdeaGenerationLoop:
                 })
 
         return ideas
+
+    def _find_transferable_methods(self) -> List[Dict[str, Any]]:
+        """
+        Find methods used in one domain that could apply to concepts
+        in a different domain (using NetworkX graph traversal).
+
+        Looks for: Method <-[USES_METHOD]- Paper1 (domain A)
+                   Concept <-[INTRODUCES]- Paper2 (domain B)
+        where Paper2 does NOT already use the Method.
+        """
+        graph = self.gc._graph
+        results = []
+
+        # Build a map: method_id -> list of (paper_id, domain)
+        method_papers: Dict[str, List[Dict[str, str]]] = {}
+        for node_id, attrs in graph.nodes(data=True):
+            if attrs.get("label") != "Paper":
+                continue
+            paper_domain = attrs.get("domain", "")
+            for succ in graph.successors(node_id):
+                edge_data = graph.edges[node_id, succ]
+                succ_attrs = graph.nodes.get(succ, {})
+                if (edge_data.get("relation") == "USES_METHOD"
+                        and succ_attrs.get("label") == "Method"):
+                    method_papers.setdefault(succ, []).append({
+                        "paper_id": node_id,
+                        "domain": paper_domain,
+                    })
+
+        # Build a map: concept_id -> list of (paper_id, domain)
+        concept_papers: Dict[str, List[Dict[str, str]]] = {}
+        for node_id, attrs in graph.nodes(data=True):
+            if attrs.get("label") != "Paper":
+                continue
+            paper_domain = attrs.get("domain", "")
+            for succ in graph.successors(node_id):
+                edge_data = graph.edges[node_id, succ]
+                succ_attrs = graph.nodes.get(succ, {})
+                if (edge_data.get("relation") == "INTRODUCES"
+                        and succ_attrs.get("label") == "Concept"):
+                    concept_papers.setdefault(succ, []).append({
+                        "paper_id": node_id,
+                        "domain": paper_domain,
+                    })
+
+        # Find cross-domain transfer opportunities
+        for method_id, m_papers in method_papers.items():
+            method_attrs = graph.nodes.get(method_id, {})
+            method_domains = {p["domain"] for p in m_papers if p["domain"]}
+
+            for concept_id, c_papers in concept_papers.items():
+                concept_attrs = graph.nodes.get(concept_id, {})
+                concept_domains = {p["domain"] for p in c_papers if p["domain"]}
+
+                # Look for domains in concept that are NOT in method's domains
+                cross_domains = concept_domains - method_domains
+                if not cross_domains:
+                    continue
+
+                # Check that no paper in the concept's domain already uses this method
+                concept_paper_ids = {p["paper_id"] for p in c_papers}
+                already_used = any(
+                    graph.has_edge(pid, method_id)
+                    for pid in concept_paper_ids
+                )
+                if already_used:
+                    continue
+
+                for target_domain in cross_domains:
+                    source_domain = next(iter(method_domains)) if method_domains else ""
+                    results.append({
+                        "method": method_attrs.get("name", method_id),
+                        "method_desc": method_attrs.get("description", ""),
+                        "source_domain": source_domain,
+                        "target_concept": concept_attrs.get("name", concept_id),
+                        "target_domain": target_domain,
+                    })
+
+                    if len(results) >= 10:
+                        return results
+
+        return results
 
     async def evaluate_idea(self, idea: Dict[str, Any]) -> Dict[str, Any]:
         """
