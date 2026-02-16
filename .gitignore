@@ -30,10 +30,10 @@ env/
 Thumbs.db
 
 # Data (large files — not committed to git)
-data/documents/**/*.pdf
+data/documents/
 data/graph/
-data/indexes/**/*.json
-data/indexes/**/*.bin
+data/indexes/
+data/insights/
 
 # Keep directory structure
 !data/documents/.gitkeep
