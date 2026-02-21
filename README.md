@@ -11,6 +11,16 @@
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.31+-FF4B4B.svg)](https://streamlit.io)
 [![Akash Network](https://img.shields.io/badge/Deploy-Akash%20Network-red.svg)](docs/AKASH_DEPLOYMENT.md)
 
+---
+
+### **[Launch Live Demo](https://dci-research-agent.streamlit.app)**
+
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://dci-research-agent.streamlit.app)
+
+*Try the research agent directly in your browser — no installation required.*
+
+---
+
 *The first open-source multi-agent system that combines specialized Small Language Models with knowledge graph retrieval-augmented generation for digital currency research.*
 
 </div>
