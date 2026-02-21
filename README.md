@@ -13,9 +13,9 @@
 
 ---
 
-### **[Launch Live Demo](https://share.streamlit.io/deploy?repository=Michael-Abril/dci-research-agent-system&branch=streamlit-demo&mainModule=streamlit_app.py)**
+### **[Launch Live Demo](https://dci-research-agent-system.streamlit.app)**
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/deploy?repository=Michael-Abril/dci-research-agent-system&branch=streamlit-demo&mainModule=streamlit_app.py)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://dci-research-agent-system.streamlit.app)
 
 *Try the research agent directly in your browser — no installation required.*
 

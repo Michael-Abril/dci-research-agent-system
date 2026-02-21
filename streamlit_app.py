@@ -1,6 +1,5 @@
 """
 Streamlit Cloud entry point.
-Redirects to the main application in app/main.py
 """
 import sys
 from pathlib import Path
@@ -9,4 +8,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Import and run the main app
-from app.main import *
+from app.main import main
+
+main()
