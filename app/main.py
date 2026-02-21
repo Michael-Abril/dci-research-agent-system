@@ -65,6 +65,97 @@ _orchestrator = None
 _orchestrator_error = None
 
 
+
+# ── Demo Mode Responses ─────────────────────────────────────────────
+# Pre-built responses for demonstration when backend is not configured
+
+DEMO_RESPONSES = {
+    "hamilton": {
+        "response": """**Project Hamilton** is a joint research initiative between the MIT Digital Currency Initiative and the Federal Reserve Bank of Boston, exploring the technical design of a potential U.S. Central Bank Digital Currency (CBDC).
+
+**Key Achievements:**
+- **1.7 million transactions per second** throughput demonstrated in Phase 1
+- Sub-second transaction finality
+- Novel architecture separating transaction validation from execution
+
+**Technical Approach:**
+The system uses a two-phase commit protocol with parallel processing. Transaction Processors validate and order transactions, while State Executors apply validated transactions to account balances.
+
+*This research demonstrates that a CBDC can achieve throughput exceeding major payment networks like Visa (~65,000 TPS).*""",
+        "routing": {"primary_domain": "cbdc", "confidence": 0.95},
+        "agents_used": ["Router", "CBDC Agent", "Synthesis"],
+        "sources": [{"paper_title": "Hamilton: A High-Performance Transaction Processor", "section_title": "System Design", "pages": "4-8"}]
+    },
+    "privacy": {
+        "response": """**Privacy in CBDCs** is one of the most challenging design trade-offs. The MIT DCI paper "Beware the Weak Sentinel" introduces a framework for analyzing privacy-auditability trade-offs.
+
+**Cryptographic Techniques Explored:**
+- **Zero-Knowledge Proofs (ZKPs)** — Prove transaction validity without revealing amounts
+- **Homomorphic Encryption** — Compute on encrypted data
+- **Secure Multi-Party Computation (MPC)** — Distribute trust across parties
+
+*The research concludes that technical solutions exist, but policy decisions must drive the privacy-auditability balance.*""",
+        "routing": {"primary_domain": "privacy", "confidence": 0.92},
+        "agents_used": ["Router", "Privacy Agent", "Synthesis"],
+        "sources": [{"paper_title": "Beware the Weak Sentinel", "section_title": "Privacy Framework", "pages": "3-7"}]
+    },
+    "stablecoin": {
+        "response": """**Stablecoins and Systemic Risk**: DCI research examines how stablecoins interact with traditional finance.
+
+**Key Findings from "The Hidden Plumbing of Stablecoins":**
+- **$150B+ market cap** backed primarily by Treasury securities
+- Redemption runs could force rapid Treasury liquidation
+- Potential to amplify Treasury market volatility
+
+*Stablecoins are now embedded in traditional financial infrastructure.*""",
+        "routing": {"primary_domain": "stablecoin", "confidence": 0.90},
+        "agents_used": ["Router", "Stablecoin Agent", "Synthesis"],
+        "sources": [{"paper_title": "The Hidden Plumbing of Stablecoins", "section_title": "Treasury Impact", "pages": "8-14"}]
+    },
+    "bitcoin": {
+        "response": """**Utreexo** is a novel accumulator that reduces Bitcoin full node storage:
+- **Current UTXO set**: ~8GB and growing
+- **With Utreexo**: ~1KB constant size
+
+Uses a Merkle forest accumulator where transaction senders provide inclusion proofs, enabling full nodes on smartphones.
+
+*This enables true decentralization by making full nodes accessible to everyone.*""",
+        "routing": {"primary_domain": "bitcoin", "confidence": 0.93},
+        "agents_used": ["Router", "Bitcoin Agent", "Synthesis"],
+        "sources": [{"paper_title": "Utreexo: A Dynamic Hash-Based Accumulator", "section_title": "Design", "pages": "3-8"}]
+    },
+    "default": {
+        "response": """**Welcome to the MIT DCI Research Agent System!**
+
+This is **demonstration mode**. Try asking about:
+- "How does Project Hamilton achieve high throughput?"
+- "What privacy techniques are used in CBDCs?"
+- "What systemic risks do stablecoins pose?"
+- "How does Utreexo work?"
+
+In production, queries flow through Router -> Domain Agents -> Hybrid Retrieval -> Synthesis -> Critique.
+
+See the [GitHub repo](https://github.com/Michael-Abril/dci-research-agent-system) for full setup.""",
+        "routing": {"primary_domain": "general", "confidence": 0.5},
+        "agents_used": ["Demo Mode"],
+        "sources": []
+    }
+}
+
+def get_demo_response(query: str) -> dict:
+    """Return a demo response based on query keywords."""
+    q = query.lower()
+    if any(k in q for k in ["hamilton", "throughput", "tps", "cbdc"]):
+        return DEMO_RESPONSES["hamilton"]
+    elif any(k in q for k in ["privacy", "zero knowledge", "zkp", "sentinel"]):
+        return DEMO_RESPONSES["privacy"]
+    elif any(k in q for k in ["stablecoin", "usdt", "usdc", "treasury"]):
+        return DEMO_RESPONSES["stablecoin"]
+    elif any(k in q for k in ["bitcoin", "utreexo", "utxo", "btc"]):
+        return DEMO_RESPONSES["bitcoin"]
+    return DEMO_RESPONSES["default"]
+
+
 # ── Page config ──────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -490,14 +581,13 @@ def process_query(query: str, domain_override=None):
 
             gc, _ = get_graph_client()
             if gc is None:
+                # Use demo mode when knowledge graph is not available
+                demo = get_demo_response(query)
                 return {
-                    "response": (
-                        "The knowledge graph is not available. "
-                        "Please check the System Setup tab for instructions."
-                    ),
-                    "sources": [],
-                    "routing": routing,
-                    "agents_used": [],
+                    "response": demo["response"],
+                    "sources": demo["sources"],
+                    "routing": demo["routing"],
+                    "agents_used": demo["agents_used"],
                     "critique": {},
                 }
 
